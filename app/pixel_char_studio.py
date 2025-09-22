@@ -1,6 +1,26 @@
 ﻿import os, sys, json, glob, uuid, datetime, contextlib
 from typing import List, Optional
 import gradio as gr
+
+# ``gradio_client`` currently assumes that every JSON schema object is a
+# dictionary.  When the schema contains ``additionalProperties: false`` the
+# library receives a boolean value instead which causes a ``TypeError`` when it
+# tries to look for keys on the boolean.  We gently patch the helper so Gradio
+# can render the interface without crashing.  The shim can be dropped once the
+# upstream issue is fixed.
+try:  # pragma: no cover - defensive patching for a runtime dependency
+    from gradio_client import utils as _grc_utils
+except Exception:  # pragma: no cover - gradio client may not be present
+    _grc_utils = None
+else:
+    _orig_json_schema_to_python_type = _grc_utils._json_schema_to_python_type
+
+    def _pcs_json_schema_to_python_type(schema, defs):
+        if isinstance(schema, bool):
+            return "Any" if schema else "None"
+        return _orig_json_schema_to_python_type(schema, defs)
+
+    _grc_utils._json_schema_to_python_type = _pcs_json_schema_to_python_type
 import torch
 from PIL import Image, ImageColor, ImageFilter
 from diffusers import DiffusionPipeline, LCMScheduler, DPMSolverMultistepScheduler
