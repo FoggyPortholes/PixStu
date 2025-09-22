@@ -55,22 +55,61 @@ def load_curated():
 
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 
-def load_base(model_id, quality):
+def load_base(model_id, quality, local_dir=None):
+    """Load (and cache) the base pipeline with offline-friendly fallbacks."""
     global _PIPE, _CUR_BASE
     mid = model_id or DEFAULT_MODEL_ID
+    if local_dir is None and mid == DEFAULT_MODEL_ID:
+        local_dir = os.path.join(MODELS_ROOT, "sdxl-base-1.0")
+    if local_dir:
+        local_dir = _abs_under_models(os.path.expanduser(local_dir))
+    dtype = (_DTYPE if _DEV_KIND != "dml" else torch.float32)
+    variant = ("fp16" if dtype == torch.float16 else None)
     if (_PIPE is None) or (_CUR_BASE != mid):
-        pipe = DiffusionPipeline.from_pretrained(
-            mid, use_safetensors=True,
-            torch_dtype=(_DTYPE if _DEV_KIND!="dml" else torch.float32),
-            variant=("fp16" if _DTYPE==torch.float16 else None)
-        )
-        pipe.to(_DEVICE); pipe.enable_vae_tiling()
-        if _DEV_KIND=="cuda":
-            try: pipe.enable_xformers_memory_efficient_attention()
-            except: pass
-        _PIPE = pipe; _CUR_BASE = mid
-    _PIPE.scheduler = (LCMScheduler.from_config(_PIPE.scheduler.config) if quality=="Fast (LCM)"
-                       else DPMSolverMultistepScheduler.from_config(_PIPE.scheduler.config))
+        candidates: List[str] = []
+        seen = set()
+        env_dir = os.getenv("SDXL_BASE_DIR")
+        if env_dir:
+            env_dir = os.path.expanduser(env_dir)
+        for cand in (local_dir, env_dir, mid):
+            if not cand:
+                continue
+            if cand in seen:
+                continue
+            seen.add(cand)
+            candidates.append(cand)
+        offline_env = os.getenv("HF_HUB_OFFLINE")
+        offline = False if offline_env is None else offline_env != "0"
+        last_err = None
+        for path in candidates:
+            try:
+                pipe = DiffusionPipeline.from_pretrained(
+                    path,
+                    use_safetensors=True,
+                    torch_dtype=dtype,
+                    variant=variant,
+                    local_files_only=offline or os.path.isdir(path),
+                )
+                pipe.to(_DEVICE)
+                pipe.enable_vae_tiling()
+                if _DEV_KIND == "cuda":
+                    try:
+                        pipe.enable_xformers_memory_efficient_attention()
+                    except Exception:
+                        pass
+                _PIPE = pipe
+                _CUR_BASE = mid
+                break
+            except Exception as err:
+                last_err = err
+        else:
+            raise EnvironmentError(
+                f"Could not load model from {candidates}. Set SDXL_BASE_DIR or supply a local directory."
+            ) from last_err
+    if quality == "Fast (LCM)":
+        _PIPE.scheduler = LCMScheduler.from_config(_PIPE.scheduler.config)
+    else:
+        _PIPE.scheduler = DPMSolverMultistepScheduler.from_config(_PIPE.scheduler.config)
     return _PIPE
 
 def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
