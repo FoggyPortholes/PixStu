@@ -33,7 +33,13 @@ from dataclasses import dataclass
 from typing import Tuple, Dict, List, Optional
 
 # Safety: avoid decompression bombs for mistakenly large images
-Image.MAX_IMAGE_PIXELS = 64_000_000  # ~64MP
+Image.MAX_IMAGE_PIXELS = 64_000_000  # P5: safety bound
+
+def _open_rgba(path):
+    try:
+        return Image.open(path).convert('RGBA')
+    except Exception as e:
+        raise SystemExit(f"[error] failed to open image '{path}': {e}")
 
 @dataclass
 class TileSpec:
@@ -84,10 +90,10 @@ def make_template(tile: TileSpec, sheet: SheetSpec, label_prefix: Optional[str]=
     img = Image.new("RGBA", (W, H), (0,0,0,0))
     g = ImageDraw.Draw(img)
     for c in range(sheet.cols + 1):
-        x = c * tile.w
+        x = _safe_int(c * tile.w)
         g.line([(x,0),(x,H)], fill=(255,255,255,grid_alpha), width=1)
     for r in range(sheet.rows + 1):
-        y = r * tile.h
+        y = _safe_int(r * tile.h)
         g.line([(0,y),(W,y)], fill=(255,255,255,grid_alpha), width=1)
     if label_prefix:
         try:
@@ -117,8 +123,8 @@ def paste_with_pivot(sheet_img: Image.Image, frame_img: Image.Image, tile: TileS
         bbox = frame_img.getbbox()
         if bbox is None:
             return
-        fx = bbox[0] + (bbox[2]-bbox[0])//2
-        fy = bbox[3]
+        fx = _safe_int(bbox[0] + (bbox[2]-bbox[0]) / 2.0)
+        fy = _safe_int(bbox[3])
     else:
         fx, fy = frame_pivot
     dx, dy = sx - fx, sy - fy
@@ -129,13 +135,33 @@ def validate_sheet(sheet_img: Image.Image, tile: TileSpec, sheet: SheetSpec):
     exp_w, exp_h = tile.w*sheet.cols, tile.h*sheet.rows
     ok_size = (sheet_img.width == exp_w and sheet_img.height == exp_h)
     empty_tiles = []
+    non_empty_count = 0
+    any_alpha = False
     for r in range(sheet.rows):
         for c in range(sheet.cols):
             box = (c*tile.w, r*tile.h, (c+1)*tile.w, (r+1)*tile.h)
-            if sheet_img.crop(box).getbbox() is None:
+            tile_img = sheet_img.crop(box)
+            bbox = tile_img.getbbox()
+            if bbox is None:
                 empty_tiles.append((r,c))
-    return (ok_size, {"size_ok": ok_size, "empty_tiles": empty_tiles,
-                      "expected": [exp_w, exp_h], "actual": [sheet_img.width, sheet_img.height]})
+            else:
+                non_empty_count += 1
+                if tile_img.mode == "RGBA":
+                    alpha_band = tile_img.split()[-1]
+                    extrema = alpha_band.getextrema()
+                    if extrema and extrema[0] < 255:
+                        any_alpha = True
+    report = {
+        "size_ok": ok_size,
+        "expected": [exp_w, exp_h],
+        "actual": [sheet_img.width, sheet_img.height],
+        "tile_size": [tile.w, tile.h],
+        "grid": [sheet.rows, sheet.cols],
+        "empty_tiles": empty_tiles,
+        "non_empty_count": non_empty_count,
+        "alpha_present": any_alpha,
+    }
+    return (ok_size, report)
 
 def gif_from_row(sheet_img: Image.Image, tile: TileSpec, row: int, frames: int, out_path: str,
                  frame_ms: int=90, optimize: bool=True) -> None:
@@ -224,10 +250,7 @@ def main(argv: List[str]) -> None:
     elif args.cmd == "validate":
         tile = TileSpec(*args.tile)
         sheet = SheetSpec(*args.sheet)
-        try:
-            img = Image.open(args.image).convert("RGBA")
-        except Exception as e:
-            raise SystemExit(f"[error] failed to open image '{args.image}': {e}")
+        img = _open_rgba(args.image)
         ok, report = validate_sheet(img, tile, sheet)
         print(json.dumps(report, indent=2))
         if not ok:
@@ -269,10 +292,7 @@ def main(argv: List[str]) -> None:
 
         r = c = 0
         for fp in frames:
-            try:
-                fr = Image.open(fp).convert("RGBA")
-            except Exception as e:
-                raise SystemExit(f"[error] failed to open frame '{fp}': {e}")
+            fr = _open_rgba(fp)
             base = os.path.basename(fp)
             pm = pivot_map.get(base)
             frame_pivot = tuple(pm) if isinstance(pm, (list, tuple)) and len(pm) == 2 else None
@@ -285,19 +305,13 @@ def main(argv: List[str]) -> None:
 
     elif args.cmd == "gif":
         tile = TileSpec(*args.tile)
-        try:
-            img = Image.open(args.image).convert("RGBA")
-        except Exception as e:
-            raise SystemExit(f"[error] failed to open image '{args.image}': {e}")
+        img = _open_rgba(args.image)
         gif_from_row(img, tile, args.row, args.frames, args.out, args.ms)
         print("Wrote %s" % args.out)
 
     elif args.cmd == "slice":
         tile = TileSpec(*args.tile); sheet = SheetSpec(*args.sheet)
-        try:
-            img = Image.open(args.image).convert("RGBA")
-        except Exception as e:
-            raise SystemExit(f"[error] failed to open image '{args.image}': {e}")
+        img = _open_rgba(args.image)
         os.makedirs(args.outdir, exist_ok=True)
         for r in range(sheet.rows):
             for c in range(sheet.cols):

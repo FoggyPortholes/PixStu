@@ -55,22 +55,8 @@ def load_curated():
 
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 
-def load_base(model_id, quality):
-    global _PIPE, _CUR_BASE
-    mid = model_id or DEFAULT_MODEL_ID
-    if (_PIPE is None) or (_CUR_BASE != mid):
-        pipe = DiffusionPipeline.from_pretrained(
-            mid, use_safetensors=True,
-            torch_dtype=(_DTYPE if _DEV_KIND!="dml" else torch.float32),
-            variant=("fp16" if _DTYPE==torch.float16 else None)
-        )
-        pipe.to(_DEVICE); pipe.enable_vae_tiling()
-        if _DEV_KIND=="cuda":
-            try: pipe.enable_xformers_memory_efficient_attention()
-            except: pass
-        _PIPE = pipe; _CUR_BASE = mid
-    _PIPE.scheduler = (LCMScheduler.from_config(_PIPE.scheduler.config) if quality=="Fast (LCM)"
-                       else DPMSolverMultistepScheduler.from_config(_PIPE.scheduler.config))
+def load_base(model_id, quality, local_dir=None):
+
     return _PIPE
 
 def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
