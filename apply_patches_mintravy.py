@@ -33,7 +33,13 @@ from dataclasses import dataclass
 from typing import Tuple, Dict, List, Optional
 
 # Safety: avoid decompression bombs for mistakenly large images
-Image.MAX_IMAGE_PIXELS = 64_000_000  # ~64MP
+Image.MAX_IMAGE_PIXELS = 64_000_000  # P5: safety bound
+
+def _open_rgba(path):
+    try:
+        return Image.open(path).convert('RGBA')
+    except Exception as e:
+        raise SystemExit(f"[error] failed to open image '{path}': {e}")
 
 @dataclass
 class TileSpec:
@@ -224,10 +230,7 @@ def main(argv: List[str]) -> None:
     elif args.cmd == "validate":
         tile = TileSpec(*args.tile)
         sheet = SheetSpec(*args.sheet)
-        try:
-            img = Image.open(args.image).convert("RGBA")
-        except Exception as e:
-            raise SystemExit(f"[error] failed to open image '{args.image}': {e}")
+        img = _open_rgba(args.image)
         ok, report = validate_sheet(img, tile, sheet)
         print(json.dumps(report, indent=2))
         if not ok:
@@ -269,10 +272,7 @@ def main(argv: List[str]) -> None:
 
         r = c = 0
         for fp in frames:
-            try:
-                fr = Image.open(fp).convert("RGBA")
-            except Exception as e:
-                raise SystemExit(f"[error] failed to open frame '{fp}': {e}")
+            fr = _open_rgba(fp)
             base = os.path.basename(fp)
             pm = pivot_map.get(base)
             frame_pivot = tuple(pm) if isinstance(pm, (list, tuple)) and len(pm) == 2 else None
@@ -285,19 +285,13 @@ def main(argv: List[str]) -> None:
 
     elif args.cmd == "gif":
         tile = TileSpec(*args.tile)
-        try:
-            img = Image.open(args.image).convert("RGBA")
-        except Exception as e:
-            raise SystemExit(f"[error] failed to open image '{args.image}': {e}")
+        img = _open_rgba(args.image)
         gif_from_row(img, tile, args.row, args.frames, args.out, args.ms)
         print("Wrote %s" % args.out)
 
     elif args.cmd == "slice":
         tile = TileSpec(*args.tile); sheet = SheetSpec(*args.sheet)
-        try:
-            img = Image.open(args.image).convert("RGBA")
-        except Exception as e:
-            raise SystemExit(f"[error] failed to open image '{args.image}': {e}")
+        img = _open_rgba(args.image)
         os.makedirs(args.outdir, exist_ok=True)
         for r in range(sheet.rows):
             for c in range(sheet.cols):
