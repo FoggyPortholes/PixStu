@@ -139,7 +139,7 @@ def validate_sheet(sheet_img: Image.Image, tile: TileSpec, sheet: SheetSpec):
 
 def gif_from_row(sheet_img: Image.Image, tile: TileSpec, row: int, frames: int, out_path: str,
                  frame_ms: int=90, optimize: bool=True) -> None:
-    """Export an animated GIF using a single master palette and transparent index 0."""
+    """Export an animated GIF using a single master palette and transparent index 0 (no flicker/halo)."""
     sheet_img = _ensure_rgba(sheet_img)
     # 1) Extract RGBA tiles
     tiles = []
@@ -147,28 +147,29 @@ def gif_from_row(sheet_img: Image.Image, tile: TileSpec, row: int, frames: int, 
         box = (c*tile.w, row*tile.h, (c+1)*tile.w, (row+1)*tile.h)
         tiles.append(sheet_img.crop(box).convert("RGBA"))
 
-    # 2) Build montage to derive unified palette (prevents color flicker)
+    # 2) Build montage to derive unified palette
     montage = Image.new("RGBA", (tile.w*frames, tile.h), (0,0,0,0))
     for i, t in enumerate(tiles):
         montage.alpha_composite(t, (i*tile.w, 0))
 
-    trans_rgb = (255, 0, 255)  # index 0 reserved as transparent key
+    # 3) Force palette index 0 to transparent key (magenta)
+    trans_rgb = (255, 0, 255)
     mastered = montage.convert("P", palette=Image.ADAPTIVE, colors=255, dither=Image.NONE)
-    pal = mastered.getpalette()[:255*3]   # keep 255 colors
-    pal[0:3] = list(trans_rgb)            # force index 0
+    pal = mastered.getpalette()[:255*3]  # keep 255 colors
+    pal[0:3] = list(trans_rgb)
     if len(pal) < 256*3:
-        pal += [0] * (256*3 - len(pal))
+        pal += [0]*(256*3 - len(pal))
     pal_seed = Image.new("P", (1,1))
     pal_seed.putpalette(pal)
 
-    # 3) Flatten each tile onto transparent key, then quantize to master palette
+    # 4) Flatten onto key color, quantize to master palette
     pal_frames = []
     for im in tiles:
-        base = Image.new("RGBA", im.size, trans_rgb + (0,))  # RGBA with alpha 0
-        base.paste(im, (0,0), im.split()[-1])                # preserve edges
+        base = Image.new("RGBA", im.size, trans_rgb + (0,))
+        base.paste(im, (0,0), im.split()[-1])
         pal_frames.append(base.quantize(palette=pal_seed, dither=Image.NONE))
 
-    # 4) Save with transparency index 0 and disposal=2
+    # 5) Save with transparent index 0 and disposal=2
     pal_frames[0].save(out_path, save_all=True, append_images=pal_frames[1:],
                        duration=frame_ms, loop=0, disposal=2,
                        optimize=optimize, transparency=0)
@@ -249,10 +250,13 @@ def main(argv: List[str]) -> None:
         if cols == 0:
             cols = len(frames)
         sheet = SheetSpec(rows, cols)
+        # P1: overflow guard
         capacity = sheet.rows * sheet.cols
         if len(frames) > capacity:
-            raise SystemExit(f"[error] {len(frames)} frames exceed sheet capacity {capacity} ({rows}x{cols}). "
-                             f"Increase --sheet or reduce frames.")
+            raise SystemExit(
+                f"[error] {len(frames)} frames exceed sheet capacity {capacity} "
+                f"({rows}x{cols}). Increase --sheet or reduce frames."
+            )
         W, H = tile.w*sheet.cols, tile.h*sheet.rows
         out = Image.new("RGBA", (W,H), (0,0,0,0))
 

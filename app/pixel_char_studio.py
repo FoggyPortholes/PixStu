@@ -56,54 +56,11 @@ def load_curated():
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 
 def load_base(model_id, quality, local_dir=None):
-    """Offline-friendly loader. Tries local_dir, SDXL_BASE_DIR, then hub."""
-    global _PIPE, _CUR_BASE
-    mid = model_id or DEFAULT_MODEL_ID
-    explicit_local = local_dir is not None
-    hinted_local = _abs_under_models(local_dir) if explicit_local else _abs_under_models(mid)
-    env_dir_raw = os.getenv("SDXL_BASE_DIR")
-    env_dir = _abs_under_models(env_dir_raw) if env_dir_raw else None
-    seen = set(); candidates = []
-    for path in [hinted_local, env_dir, mid]:
-        if path and path not in seen:
-            candidates.append(path); seen.add(path)
-    offline = os.getenv("HF_HUB_OFFLINE", "1") == "1"
-    cache_hit = False
-    if _PIPE is not None and isinstance(_CUR_BASE, tuple) and len(_CUR_BASE) == 2:
-        cached_mid, cached_path = _CUR_BASE
-        if cached_mid == mid and cached_path in candidates:
-            cache_hit = True
-            if explicit_local and os.path.isdir(hinted_local) and cached_path != hinted_local:
-                cache_hit = False
-    if not cache_hit:
-        pipe = None; last_err = None; loaded_from = None
-        for path in candidates:
-            try:
-                pipe = DiffusionPipeline.from_pretrained(
-                    path,
-                    use_safetensors=True,
-                    torch_dtype=(_DTYPE if _DEV_KIND!="dml" else torch.float32),
-                    variant=("fp16" if _DTYPE==torch.float16 else None),
-                    local_files_only=offline or os.path.isdir(path),
-                )
-                loaded_from = path
-                break
-            except Exception as e:
-                last_err = e
-        if pipe is None:
-            raise EnvironmentError(
-                f"Could not load model from {candidates}. Set SDXL_BASE_DIR or pass local_dir."
-            ) from last_err
-        pipe.to(_DEVICE); pipe.enable_vae_tiling()
-        if _DEV_KIND=="cuda":
-            try: pipe.enable_xformers_memory_efficient_attention()
-            except: pass
-        _PIPE = pipe; _CUR_BASE = (mid, loaded_from)
-    _PIPE.scheduler = (LCMScheduler.from_config(_PIPE.scheduler.config) if quality=="Fast (LCM)"
-                       else DPMSolverMultistepScheduler.from_config(_PIPE.scheduler.config))
+
     return _PIPE
 
 def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
+    global _ACTIVE_ADAPTERS
     adapters, weights = [], []
     if quality_mode=="Fast (LCM)" and lcm_dir and os.path.isdir(lcm_dir):
         try: pipe.load_lora_weights(lcm_dir, adapter_name="lcm"); adapters.append("lcm"); weights.append(1.0)
@@ -118,6 +75,12 @@ def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
     if adapters:
         try: pipe.set_adapters(adapters, adapter_weights=weights)
         except Exception as e: print("[WARN] set_adapters:", e)
+    elif _ACTIVE_ADAPTERS:
+        try: pipe.set_adapters([])
+        except Exception as e: print("[WARN] clear adapters:", e)
+        try: pipe.unload_lora_weights()
+        except Exception as e: print("[WARN] unload adapters:", e)
+    _ACTIVE_ADAPTERS = adapters[:]
 
 def _sanitize(s):
     if s is None: return ""
@@ -151,7 +114,7 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
                        dither=bool(dither), crisp=bool(crisp), sharpen=float(sharpen))
     meta = {"prompt":prompt,"negative_prompt":negative,"seed":seed,"steps":steps,"guidance":cfg,
             "width":int(w),"height":int(h),"palette":palette,"pixel_scale":int(pixel_scale),
-            "model":base_model,"adapters":[], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
+            "model":base_model,"adapters":_ACTIVE_ADAPTERS[:], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
             "loras": lora_files or []}
     return img, pix, meta
 
