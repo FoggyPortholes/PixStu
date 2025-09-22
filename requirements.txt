@@ -1,4 +1,4 @@
-﻿gradio>=4.35.0
+gradio>=4.35.0
 diffusers>=0.30.0
 transformers>=4.43.0
 huggingface_hub>=0.25.0
@@ -7,3 +7,11 @@ safetensors>=0.4.3
 Pillow>=10.4.0
 imageio>=2.34.0
 # torch/torchvision installed below (CPU default)
+
+# P8: dependency pins for stability
+pillow==10.4.0
+diffusers==0.30.2
+transformers==4.44.0
+huggingface_hub==0.24.6
+accelerate==0.34.2
+safetensors==0.4.4
