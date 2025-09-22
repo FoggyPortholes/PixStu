@@ -1,0 +1,86 @@
+name: Codex PR
+ 
+on:
+  workflow_dispatch:
+    inputs:
+      base:
+        description: Base branch
+        required: true
+        default: main
+      branch:
+        description: New branch name (will be created)
+        required: true
+      title:
+        description: Pull request title
+        required: true
+      body:
+        description: Pull request body
+        required: false
+        default: ""
+      patch_b64:
+        description: Base64-encoded unified diff (git patch)
+        required: true
+  repository_dispatch:
+    types: [codex-pr]
+ 
+permissions:
+  contents: write
+  pull-requests: write
+ 
+jobs:
+  open-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve inputs (supports both triggers)
+        id: vars
+        run: |
+          BASE="${{ github.event.inputs.base || github.event.client_payload.base || 'main' }}"
+          BRANCH="${{ github.event.inputs.branch || github.event.client_payload.branch }}"
+          TITLE="${{ github.event.inputs.title || github.event.client_payload.title }}"
+          BODY="${{ github.event.inputs.body || github.event.client_payload.body || '' }}"
+          PATCH_B64="${{ github.event.inputs.patch_b64 || github.event.client_payload.patch_b64 }}"
+          echo "base=$BASE" >> $GITHUB_OUTPUT
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+          echo "title=$TITLE" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          echo "patch_b64=$PATCH_B64" >> $GITHUB_OUTPUT
+ 
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.vars.outputs.base }}
+          fetch-depth: 0
+ 
+      - name: Configure git
+        run: |
+          git config user.name "codex-bot"
+          git config user.email "codex-bot@users.noreply.github.com"
+ 
+      - name: Create branch
+        run: |
+          git switch -c "${{ steps.vars.outputs.branch }}" "origin/${{ steps.vars.outputs.base }}" || \
+          git checkout -b "${{ steps.vars.outputs.branch }}" "origin/${{ steps.vars.outputs.base }}"
+ 
+      - name: Apply patch
+        env:
+          PATCH_B64: ${{ steps.vars.outputs.patch_b64 }}
+        run: |
+          echo "$PATCH_B64" | base64 -d > /tmp/changes.diff
+          git apply --whitespace=fix /tmp/changes.diff
+ 
+      - name: Commit & push
+        run: |
+          git add -A
+          git commit -m "${{ steps.vars.outputs.title }}"
+          git push --set-upstream origin "${{ steps.vars.outputs.branch }}"
+ 
+      - name: Open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base "${{ steps.vars.outputs.base }}" \
+            --head "${{ steps.vars.outputs.branch }}" \
+            --title "${{ steps.vars.outputs.title }}" \
+            --body  "${{ steps.vars.outputs.body }}"
