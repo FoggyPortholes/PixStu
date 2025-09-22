@@ -212,11 +212,12 @@ with gr.Blocks(analytics_enabled=False) as demo:
         apply_cur = gr.Button("Apply curated")
 
     gen = gr.Button("Generate")
-    out = gr.Image(label="Output"); pix = gr.Image(label="Pixelated"); meta = gr.JSON(label="Meta"); status = gr.Textbox(label="Status")
+    out = gr.Image(label="Output"); pix = gr.Image(label="Pixelated"); meta = gr.Code(label="Meta", language="json"); status = gr.Textbox(label="Status")
 
     def _on_gen(prompt,negative,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json):
         img, pimg, m = generate(prompt,negative,-1,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json)
-        return img, pimg, m, (m.get("error") if isinstance(m,dict) and "error" in m else "")
+        meta_json = json.dumps(m, indent=2, sort_keys=True) if isinstance(m, dict) else str(m)
+        return img, pimg, meta_json, (m.get("error") if isinstance(m,dict) and "error" in m else "")
 
     gen.click(_on_gen,
         inputs=[prompt,negative,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lora_weights_json],
