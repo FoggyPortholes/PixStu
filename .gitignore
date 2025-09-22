@@ -1,0 +1,76 @@
+# -------------------------
+# Python / Packaging
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dylib
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Build / Dist / PyInstaller
+build/
+dist/
+*.spec
+*.manifest
+*.tmp
+
+# Logs / temp
+logs/
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+
+# Notebooks
+.ipynb_checkpoints/
+
+# -------------------------
+# App-specific (large assets, local state)
+# -------------------------
+# Model weights & adapters (keep folder, ignore contents)
+models/**
+!models/.gitkeep
+# Common weight formats
+*.safetensors
+*.ckpt
+*.pt
+*.bin
+*.onnx
+
+# Local HF cache inside repo (portable builds)
+hf_cache/
+huggingface/
+.cache/
+
+# Gallery outputs (keep folder structure)
+gallery/**
+!gallery/.gitkeep
+sprites/**
+!sprites/.gitkeep
+
+# Optional pose packs (keep folder)
+assets/poses/**
+!assets/poses/.gitkeep
+
+# Preferences/state that shouldn’t be versioned
+configs/preferences.json
+
+# -------------------------
+# OS / Editor junk
+# -------------------------
+.DS_Store
+Thumbs.db
+*.iml
+.idea/
+.vscode/

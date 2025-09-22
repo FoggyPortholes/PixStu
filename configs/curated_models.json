@@ -1,0 +1,14 @@
+﻿{
+  "presets": [
+    {
+      "name": "SDXL + PixelArtXL",
+      "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "refiner_model": "stabilityai/stable-diffusion-xl-refiner-1.0",
+      "lcm_dir": "models/lcm",
+      "loras": [
+        { "path": "models/lora/pixel-art-xl.safetensors", "weight": 1.0 }
+      ],
+      "suggested": { "mode": "Quality (Base)", "steps": 30, "guidance": 7.0 }
+    }
+  ]
+}
