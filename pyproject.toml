@@ -1,0 +1,10 @@
+[project]
+name = "minitravy"
+version = "0.1.0"
+requires-python = ">=3.8"
+dependencies = ["pillow"]
+
+[project.entry-points."minitravy.plugins"]
+mt_slice = "mt_slice.plugin"
+mt_pivotmap = "mt_pivotmap.plugin"
+mt_sidecaremit = "mt_sidecaremit.plugin"
