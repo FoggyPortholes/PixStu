@@ -74,6 +74,7 @@ def load_base(model_id, quality):
     return _PIPE
 
 def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
+    global _ACTIVE_ADAPTERS
     adapters, weights = [], []
     if quality_mode=="Fast (LCM)" and lcm_dir and os.path.isdir(lcm_dir):
         try: pipe.load_lora_weights(lcm_dir, adapter_name="lcm"); adapters.append("lcm"); weights.append(1.0)
@@ -88,6 +89,12 @@ def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
     if adapters:
         try: pipe.set_adapters(adapters, adapter_weights=weights)
         except Exception as e: print("[WARN] set_adapters:", e)
+    elif _ACTIVE_ADAPTERS:
+        try: pipe.set_adapters([])
+        except Exception as e: print("[WARN] clear adapters:", e)
+        try: pipe.unload_lora_weights()
+        except Exception as e: print("[WARN] unload adapters:", e)
+    _ACTIVE_ADAPTERS = adapters[:]
 
 def _sanitize(s):
     if s is None: return ""
@@ -121,7 +128,7 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
                        dither=bool(dither), crisp=bool(crisp), sharpen=float(sharpen))
     meta = {"prompt":prompt,"negative_prompt":negative,"seed":seed,"steps":steps,"guidance":cfg,
             "width":int(w),"height":int(h),"palette":palette,"pixel_scale":int(pixel_scale),
-            "model":base_model,"adapters":[], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
+            "model":base_model,"adapters":_ACTIVE_ADAPTERS[:], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
             "loras": lora_files or []}
     return img, pix, meta
 
