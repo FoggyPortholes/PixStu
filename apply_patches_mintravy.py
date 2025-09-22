@@ -129,13 +129,33 @@ def validate_sheet(sheet_img: Image.Image, tile: TileSpec, sheet: SheetSpec):
     exp_w, exp_h = tile.w*sheet.cols, tile.h*sheet.rows
     ok_size = (sheet_img.width == exp_w and sheet_img.height == exp_h)
     empty_tiles = []
+    non_empty_count = 0
+    any_alpha = False
     for r in range(sheet.rows):
         for c in range(sheet.cols):
             box = (c*tile.w, r*tile.h, (c+1)*tile.w, (r+1)*tile.h)
-            if sheet_img.crop(box).getbbox() is None:
+            tile_img = sheet_img.crop(box)
+            bbox = tile_img.getbbox()
+            if bbox is None:
                 empty_tiles.append((r,c))
-    return (ok_size, {"size_ok": ok_size, "empty_tiles": empty_tiles,
-                      "expected": [exp_w, exp_h], "actual": [sheet_img.width, sheet_img.height]})
+            else:
+                non_empty_count += 1
+                if tile_img.mode == "RGBA":
+                    alpha_band = tile_img.split()[-1]
+                    extrema = alpha_band.getextrema()
+                    if extrema and extrema[0] < 255:
+                        any_alpha = True
+    report = {
+        "size_ok": ok_size,
+        "expected": [exp_w, exp_h],
+        "actual": [sheet_img.width, sheet_img.height],
+        "tile_size": [tile.w, tile.h],
+        "grid": [sheet.rows, sheet.cols],
+        "empty_tiles": empty_tiles,
+        "non_empty_count": non_empty_count,
+        "alpha_present": any_alpha,
+    }
+    return (ok_size, report)
 
 def gif_from_row(sheet_img: Image.Image, tile: TileSpec, row: int, frames: int, out_path: str,
                  frame_ms: int=90, optimize: bool=True) -> None:
