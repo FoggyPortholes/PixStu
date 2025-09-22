@@ -1,0 +1,221 @@
+"""Simple Gradio demo that drives curated PixStu presets."""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import time
+from typing import Dict, Optional, Tuple
+
+import gradio as gr
+import torch
+from diffusers import StableDiffusionXLImg2ImgPipeline, StableDiffusionXLPipeline
+
+ROOT = os.path.abspath(os.path.dirname(__file__))
+PROJ = os.path.abspath(os.path.join(ROOT, ".."))
+
+PRESET_PATH = os.path.join(PROJ, "configs", "curated_models.json")
+with open(PRESET_PATH, "r", encoding="utf-8") as f:
+    PRESETS = json.load(f).get("presets", [])
+
+EXE_DIR = os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else PROJ
+MODELS_ROOT = os.environ.get("PCS_MODELS_ROOT", os.path.join(EXE_DIR, "models"))
+OUTPUTS_DIR = os.environ.get("PCS_OUTPUTS_DIR", os.path.join(PROJ, "outputs"))
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
+_DEVICE_KIND = "cuda" if torch.cuda.is_available() else "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu"
+_DTYPE = torch.float16 if _DEVICE_KIND in {"cuda", "mps"} else torch.float32
+_DEVICE = torch.device("cuda" if _DEVICE_KIND == "cuda" else "mps" if _DEVICE_KIND == "mps" else "cpu")
+
+_PIPELINES: Dict[str, Tuple[StableDiffusionXLPipeline, Optional[StableDiffusionXLImg2ImgPipeline]]] = {}
+
+
+def _make_generator(seed: Optional[int]) -> Optional[torch.Generator]:
+    if seed is None:
+        return None
+    try:
+        return torch.Generator(device=_DEVICE).manual_seed(int(seed))
+    except Exception:
+        return torch.manual_seed(int(seed))
+
+
+def _resolve_under_models(path: Optional[str]) -> Optional[str]:
+    if not path:
+        return path
+    if os.path.isabs(path):
+        return path
+    candidate = os.path.join(MODELS_ROOT, path)
+    return os.path.abspath(candidate)
+
+
+def _resolve_model_id(candidate: Optional[str]) -> Optional[str]:
+    if not candidate:
+        return candidate
+    resolved = _resolve_under_models(candidate)
+    if resolved and os.path.exists(resolved):
+        return resolved
+    return candidate
+
+
+def _ensure_pipeline(preset: Dict) -> Tuple[StableDiffusionXLPipeline, Optional[StableDiffusionXLImg2ImgPipeline]]:
+    cached = _PIPELINES.get(preset["name"])
+    if cached:
+        return cached
+
+    base_id = _resolve_model_id(preset.get("base_model"))
+    base_pipe = StableDiffusionXLPipeline.from_pretrained(
+        base_id,
+        torch_dtype=_DTYPE,
+        use_safetensors=True,
+    )
+    base_pipe.to(_DEVICE)
+    base_pipe.enable_vae_tiling()
+    if _DEVICE_KIND == "cuda":
+        try:
+            base_pipe.enable_xformers_memory_efficient_attention()
+        except Exception:
+            pass
+    base_pipe.set_progress_bar_config(disable=True)
+
+    refiner_pipe = None
+    refiner_id = _resolve_model_id(preset.get("refiner_model"))
+    if refiner_id:
+        refiner_pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            refiner_id,
+            torch_dtype=_DTYPE,
+            use_safetensors=True,
+        )
+        refiner_pipe.to(_DEVICE)
+        refiner_pipe.enable_vae_tiling()
+        if _DEVICE_KIND == "cuda":
+            try:
+                refiner_pipe.enable_xformers_memory_efficient_attention()
+            except Exception:
+                pass
+        refiner_pipe.set_progress_bar_config(disable=True)
+
+    _PIPELINES[preset["name"]] = (base_pipe, refiner_pipe)
+    return _PIPELINES[preset["name"]]
+
+
+def _apply_loras(pipe, preset: Dict) -> None:
+    try:
+        pipe.unload_lora_weights()
+    except Exception:
+        pass
+
+    loras = preset.get("loras") or []
+    if not loras:
+        return
+
+    adapters = []
+    weights = []
+    for entry in loras:
+        path = entry.get("path")
+        if not path:
+            continue
+        abs_path = _resolve_under_models(path)
+        if not abs_path or not os.path.exists(abs_path):
+            continue
+        adapter_name = os.path.splitext(os.path.basename(abs_path))[0]
+        try:
+            pipe.load_lora_weights(abs_path, adapter_name=adapter_name)
+        except Exception:
+            # Adapter may already be present from a previous call; keep going.
+            pass
+        adapters.append(adapter_name)
+        weights.append(float(entry.get("weight", 1.0)))
+    if adapters:
+        pipe.set_adapters(adapters, adapter_weights=weights)
+
+
+def load_pipeline(preset: Dict) -> Tuple[StableDiffusionXLPipeline, Optional[StableDiffusionXLImg2ImgPipeline]]:
+    base, refiner = _ensure_pipeline(preset)
+    _apply_loras(base, preset)
+    if refiner is not None:
+        _apply_loras(refiner, preset)
+    return base, refiner
+
+
+def generate(prompt: str, preset_name: str, seed: int = 42, steps: Optional[int] = None, guidance: Optional[float] = None):
+    prompt_text = str(prompt or "").strip()
+    if not prompt_text:
+        return None, "Prompt is required"
+    preset = next((p for p in PRESETS if p.get("name") == preset_name), None)
+    if not preset:
+        return None, f"Preset {preset_name} not found"
+
+    base, refiner = load_pipeline(preset)
+    try:
+        seed_value = int(seed) if seed is not None else None
+    except (TypeError, ValueError):
+        seed_value = None
+    generator = _make_generator(seed_value)
+
+    suggested = preset.get("suggested", {})
+    steps = int(steps or suggested.get("steps", 20))
+    guidance = float(guidance or suggested.get("guidance", 7.5))
+    height = int(suggested.get("height", 64))
+    width = int(suggested.get("width", 64))
+
+    base_result = base(
+        prompt=prompt_text,
+        num_inference_steps=steps,
+        guidance_scale=guidance,
+        generator=generator,
+        height=height,
+        width=width,
+    )
+    image = base_result.images[0]
+
+    if refiner is not None:
+        refiner_steps = max(1, steps // 4)
+        image = refiner(
+            prompt=prompt_text,
+            image=image,
+            num_inference_steps=refiner_steps,
+            guidance_scale=guidance,
+            generator=generator,
+            strength=0.25,
+        ).images[0]
+
+    filename = f"pixstu_{int(time.time())}.png"
+    save_path = os.path.join(OUTPUTS_DIR, filename)
+    image.save(save_path)
+
+    message = f"Saved to {save_path}"
+    if seed_value is not None:
+        message += f" (seed {seed_value})"
+
+    return image, message
+
+
+def build_ui():
+    preset_choices = [p.get("name") for p in PRESETS if p.get("name")]
+    with gr.Blocks(analytics_enabled=False) as demo:
+        with gr.Row():
+            prompt = gr.Textbox(label="Prompt", info="Describe the character or sprite you want to generate.")
+            preset = gr.Dropdown(
+                preset_choices,
+                value=(preset_choices[0] if preset_choices else None),
+                label="Preset",
+                info="Choose from available curated presets",
+            )
+        with gr.Row():
+            seed = gr.Number(value=42, label="Seed", info="Fix a random seed for reproducibility.")
+            steps = gr.Slider(5, 50, value=20, label="Steps", info="Number of denoising steps.")
+            guidance = gr.Slider(1, 15, value=7.5, label="Guidance", info="Prompt adherence strength.")
+        with gr.Row():
+            btn = gr.Button("Generate", interactive=bool(preset_choices))
+        with gr.Row():
+            output_img = gr.Image(label="Output")
+            output_path = gr.Textbox(label="Output Path")
+        btn.click(generate, inputs=[prompt, preset, seed, steps, guidance], outputs=[output_img, output_path])
+        if not preset_choices:
+            gr.Markdown("No curated presets found. Add entries to `configs/curated_models.json`.")
+    return demo
+
+
+if __name__ == "__main__":
+    demo = build_ui()
+    demo.launch(server_name="127.0.0.1", server_port=int(os.environ.get("PCS_PORT", 7860)))
