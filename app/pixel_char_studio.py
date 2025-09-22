@@ -56,6 +56,45 @@ def load_curated():
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 
 def load_base(model_id, quality, local_dir=None):
+    global _PIPE, _CUR_BASE
+
+    # Resolve the requested model id.
+    mid = model_id or DEFAULT_MODEL_ID
+    # Allow callers to explicitly provide a local directory that should take
+    # precedence over the identifier.
+    if local_dir:
+        candidate = _abs_under_models(local_dir)
+        if os.path.isdir(candidate):
+            mid = candidate
+    # If the identifier maps to a folder inside the models directory make sure
+    # we pass the absolute path to the pipeline loader.  This allows users to
+    # select entries from the UI returned by ``scan_base_models``.
+    resolved = _abs_under_models(mid)
+    if os.path.isdir(resolved):
+        mid = resolved
+
+    need_reload = (_PIPE is None) or (_CUR_BASE != mid)
+    if need_reload:
+        pipe = DiffusionPipeline.from_pretrained(
+            mid,
+            use_safetensors=True,
+            torch_dtype=(_DTYPE if _DEV_KIND != "dml" else torch.float32),
+            variant=("fp16" if _DTYPE == torch.float16 else None),
+        )
+        pipe.to(_DEVICE)
+        pipe.enable_vae_tiling()
+        if _DEV_KIND == "cuda":
+            with contextlib.suppress(Exception):
+                pipe.enable_xformers_memory_efficient_attention()
+        _PIPE = pipe
+        _CUR_BASE = mid
+
+    if quality == "Fast (LCM)":
+        _PIPE.scheduler = LCMScheduler.from_config(_PIPE.scheduler.config)
+    else:
+        _PIPE.scheduler = DPMSolverMultistepScheduler.from_config(
+            _PIPE.scheduler.config
+        )
 
     return _PIPE
 
