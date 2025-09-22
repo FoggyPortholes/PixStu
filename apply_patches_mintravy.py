@@ -1,16 +1,20 @@
 #!/usr/bin/env python3
-"""
-apply_patches_mintravy.py
-Generates a patched Mini Travy toolkit module (spriterig_v1_2.py) with:
-- unified GIF palette + forced transparent index
-- pack overflow guard
-- per-frame pivot map (--pivot-map)
-- slice command
-- cross-platform globbing
-- image safety bound and clearer errors
+"""Utility for generating the patched Mini Travy ``spriterig_v1_2.py`` module.
+
+The script emits the bundled v1.2 implementation next to an existing
+``spriterig_v1_1.py`` file while creating a ``.bak`` backup of the original.
+It also provides verbose logging to aid debugging in automated environments.
 """
 
-import sys, os, shutil
+from __future__ import annotations
+
+import argparse
+import logging
+import os
+import shutil
+import sys
+
+LOGGER = logging.getLogger(__name__)
 
 V2_FILENAME = "spriterig_v1_2.py"
 
@@ -302,31 +306,82 @@ if __name__ == "__main__":
     main(sys.argv[1:])
 '''
 
-def main():
-    if len(sys.argv) != 2:
-        print("Usage: python apply_patches_mintravy.py /path/to/spriterig_v1_1.py")
-        sys.exit(2)
+def _configure_logging(verbose: bool) -> None:
+    """Configure the root logger once for the script run."""
 
-    original = sys.argv[1]
-    if not os.path.exists(original):
-        print(f"[error] file not found: {original}")
-        sys.exit(1)
+    level = logging.DEBUG if verbose else logging.INFO
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
-    # Backup original next to it
-    backup = original + ".bak"
+
+def _parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Generate the Mini Travy spriterig_v1_2.py module next to an existing "
+            "spriterig_v1_1.py file while creating a .bak backup."
+        )
+    )
+    parser.add_argument(
+        "original",
+        help="Path to the existing spriterig_v1_1.py file that should be patched.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Enable verbose debug logging for troubleshooting.",
+    )
+    return parser.parse_args(argv)
+
+
+def _create_backup(original: str) -> str:
+    """Create a ``.bak`` backup of ``original``.
+
+    Returns the path of the backup file and logs any errors.
+    """
+
+    backup_path = f"{original}.bak"
     try:
-        shutil.copy2(original, backup)
-    except Exception as e:
-        print(f"[warn] could not create backup: {e}")
+        shutil.copy2(original, backup_path)
+        LOGGER.info("Created backup at %s", backup_path)
+    except Exception as exc:  # pragma: no cover - defensive logging path
+        LOGGER.warning("Could not create backup for %s: %s", original, exc)
+    return backup_path
 
-    # Write v1_2 next to original
-    out_dir = os.path.dirname(os.path.abspath(original))
-    out_path = os.path.join(out_dir, V2_FILENAME)
-    with open(out_path, "w", encoding="utf-8") as f:
-        f.write(SPRITERIG_V1_2)
 
-    print(f"Patched module written: {out_path}")
-    print(f"(Original backed up at: {backup})")
+def _write_patched_module(target_dir: str) -> str:
+    """Write the bundled ``spriterig_v1_2.py`` file to ``target_dir``."""
+
+    out_path = os.path.join(target_dir, V2_FILENAME)
+    LOGGER.debug("Writing patched module to %s", out_path)
+    with open(out_path, "w", encoding="utf-8") as file_handle:
+        file_handle.write(SPRITERIG_V1_2)
+    LOGGER.info("Patched module written to %s", out_path)
+    return out_path
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv if argv is not None else sys.argv[1:])
+    _configure_logging(args.verbose)
+
+    original = os.path.abspath(args.original)
+    LOGGER.debug("Resolved original path to %s", original)
+    if not os.path.exists(original):
+        LOGGER.error("File not found: %s", original)
+        return 1
+
+    target_dir = os.path.dirname(original)
+    LOGGER.debug("Target directory resolved to %s", target_dir)
+
+    backup = _create_backup(original)
+    out_path = _write_patched_module(target_dir)
+
+    LOGGER.info("Original backed up at: %s", backup)
+    LOGGER.info("Patched module available at: %s", out_path)
+    return 0
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
