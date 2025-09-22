@@ -84,10 +84,10 @@ def make_template(tile: TileSpec, sheet: SheetSpec, label_prefix: Optional[str]=
     img = Image.new("RGBA", (W, H), (0,0,0,0))
     g = ImageDraw.Draw(img)
     for c in range(sheet.cols + 1):
-        x = c * tile.w
+        x = _safe_int(c * tile.w)
         g.line([(x,0),(x,H)], fill=(255,255,255,grid_alpha), width=1)
     for r in range(sheet.rows + 1):
-        y = r * tile.h
+        y = _safe_int(r * tile.h)
         g.line([(0,y),(W,y)], fill=(255,255,255,grid_alpha), width=1)
     if label_prefix:
         try:
@@ -117,8 +117,8 @@ def paste_with_pivot(sheet_img: Image.Image, frame_img: Image.Image, tile: TileS
         bbox = frame_img.getbbox()
         if bbox is None:
             return
-        fx = bbox[0] + (bbox[2]-bbox[0])//2
-        fy = bbox[3]
+        fx = _safe_int(bbox[0] + (bbox[2]-bbox[0]) / 2.0)
+        fy = _safe_int(bbox[3])
     else:
         fx, fy = frame_pivot
     dx, dy = sx - fx, sy - fy
