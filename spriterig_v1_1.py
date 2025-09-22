@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
+from minitravy.api import Context
+from minitravy.plugin_manager import collect
+
 # P5: guard against decompression bombs from untrusted images
 Image.MAX_IMAGE_PIXELS = 64_000_000
 
@@ -222,6 +225,9 @@ def gif_from_row(
 def main(argv: List[str]) -> None:
     import argparse
 
+    ctx = Context()
+    cli_plugins, hook_plugins = collect(ctx)
+
     ap = argparse.ArgumentParser(description="Mini Travy SpriteRig toolkit v1.1")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -238,8 +244,14 @@ def main(argv: List[str]) -> None:
 
     p = sub.add_parser("pack", help="Pack individual PNG frames into a sheet")
     p.add_argument("frames", nargs="+", help="List of frame PNGs (globs allowed)")
+    p.add_argument(
+        "--sheet",
+        type=int,
+        nargs=2,
+        default=[1, 0],
+        help="rows cols (cols defaults to len(frames) if 0)",
+    )
     p.add_argument("--tile", type=int, nargs=2, default=[16, 16])
-    p.add_argument("--sheet", type=int, nargs=2, default=[1, 0], help="rows cols (cols defaults to len(frames) if 0)")
     p.add_argument("--pivot", type=float, nargs=2, default=[0.5, 0.875])
     p.add_argument("-o", "--out", default="sheet.png")
 
@@ -251,7 +263,20 @@ def main(argv: List[str]) -> None:
     g.add_argument("--ms", type=int, default=90)
     g.add_argument("-o", "--out", default="anim.gif")
 
+    for plugin in cli_plugins:
+        try:
+            plugin.register_subcommands(sub)
+        except Exception as exc:
+            ctx.log(f"[warn] register_subcommands failed in {getattr(plugin, 'name', '?')}: {exc}")
+
     args = ap.parse_args(argv)
+
+    for plugin in cli_plugins:
+        try:
+            if plugin.handle(args, ctx):
+                return
+        except Exception as exc:
+            ctx.log(f"[error] plugin {getattr(plugin, 'name', '?')} failed: {exc}")
 
     if args.cmd == "template":
         tile = TileSpec(*args.tile)
@@ -265,6 +290,16 @@ def main(argv: List[str]) -> None:
         sheet = SheetSpec(*args.sheet)
         img = _open_rgba(args.image)
         ok, report = validate_sheet(img, tile, sheet)
+        for plugin in hook_plugins:
+            hook = getattr(plugin, "on_validate_post", None)
+            if callable(hook):
+                try:
+                    updated = hook(report, args, ctx)
+                except Exception as exc:
+                    ctx.log(f"[warn] on_validate_post failed in {getattr(plugin, 'name', '?')}: {exc}")
+                else:
+                    if updated is not None:
+                        report = updated
         print(json.dumps(report, indent=2))
         if not ok:
             sys.exit(1)
@@ -280,6 +315,16 @@ def main(argv: List[str]) -> None:
             frames.extend(sorted(matches))
         if not frames:
             frames = args.frames
+        for plugin in hook_plugins:
+            hook = getattr(plugin, "on_pack_pre", None)
+            if callable(hook):
+                try:
+                    updated = hook(frames, args, ctx)
+                except Exception as exc:
+                    ctx.log(f"[warn] on_pack_pre failed in {getattr(plugin, 'name', '?')}: {exc}")
+                else:
+                    if updated is not None:
+                        frames = updated
         if cols == 0:
             cols = len(frames)
         sheet = SheetSpec(rows, cols)
@@ -294,6 +339,13 @@ def main(argv: List[str]) -> None:
                 c, r = 0, r + 1
         out.save(args.out)
         print(f"Wrote {args.out}")
+        for plugin in hook_plugins:
+            hook = getattr(plugin, "on_pack_post", None)
+            if callable(hook):
+                try:
+                    hook(args.out, args, ctx)
+                except Exception as exc:
+                    ctx.log(f"[warn] on_pack_post failed in {getattr(plugin, 'name', '?')}: {exc}")
 
     elif args.cmd == "gif":
         tile = TileSpec(*args.tile)
