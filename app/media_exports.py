@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import time
@@ -28,6 +29,7 @@ __all__ = [
     "nn_resize",
     "save_gif",
     "save_sprite_sheet",
+    "write_frames",
     "to_rgba",
 ]
 
@@ -133,6 +135,40 @@ def smart_alpha(
 
 def _ensure_rgba_frames(frames: Iterable[Image.Image]) -> List[Image.Image]:
     return [to_rgba(frame) for frame in frames]
+
+
+def write_frames(
+    frames: Sequence[Image.Image],
+    session_dir: str | None = None,
+    prefix: str = "frame",
+) -> str:
+    """Write ``frames`` to ``session_dir`` and return the directory path.
+
+    A ``frames.json`` manifest is written alongside the PNG files so that
+    the front-end can locate the generated frames.  When ``session_dir`` is
+    omitted a timestamped directory inside :data:`OUTPUTS_DIR` is created.
+    """
+
+    timestamp = int(time.time())
+
+    if session_dir is None:
+        session_dir = os.path.join(OUTPUTS_DIR, f"session_{timestamp}")
+
+    frames_dir = os.path.join(session_dir, "frames")
+    os.makedirs(frames_dir, exist_ok=True)
+
+    manifest: List[str] = []
+    for index, frame in enumerate(frames):
+        file_path = os.path.join(frames_dir, f"{prefix}_{index:04d}.png")
+        frame.save(file_path)
+        manifest.append(os.path.basename(file_path))
+
+    manifest_path = os.path.join(frames_dir, "frames.json")
+    payload = {"frames": manifest, "timestamp": timestamp}
+    with open(manifest_path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+
+    return frames_dir
 
 
 def save_gif(
