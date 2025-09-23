@@ -4,14 +4,38 @@ from __future__ import annotations
 import math
 import os
 import time
-from typing import Optional, Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 from PIL import Image, ImageOps
+
+from . import pipeline_cache
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
 OUTPUTS_DIR = os.environ.get("PCS_OUTPUTS_DIR", os.path.join(PROJ, "outputs"))
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
+
+def prepare_img2img_pipeline(
+    *,
+    base_model: Optional[str],
+    quality: str,
+    local_dir: Optional[str] = None,
+    lcm_dir: Optional[str] = None,
+    loras: Optional[Sequence[str]] = None,
+    lora_weights: Optional[Dict[str, float]] = None,
+):
+    """Return an image-to-image pipeline with LoRA adapters applied."""
+
+    pipe = pipeline_cache.get_img2img(base_model, quality=quality, local_dir=local_dir)
+    pipeline_cache.apply_loras(
+        pipe,
+        quality_mode=quality,
+        lcm_dir=lcm_dir,
+        loras=loras,
+        lora_weights=lora_weights,
+    )
+    return pipe
 
 
 def _timestamped_filename(prefix: str, ext: str) -> str:
