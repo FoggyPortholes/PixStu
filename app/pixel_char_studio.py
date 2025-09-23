@@ -240,7 +240,64 @@ with gr.Blocks(analytics_enabled=False) as demo:
         apply_cur = gr.Button("Apply curated")
 
     gen = gr.Button("Generate")
-    out = gr.Image(label="Output"); pix = gr.Image(label="Pixelated"); meta = gr.Code(label="Meta", language="json"); status = gr.Textbox(label="Status")
+    with gr.Tabs():
+        with gr.Tab("Results"):
+            out = gr.Image(label="Output")
+            pix = gr.Image(label="Pixelated")
+            meta = gr.Code(label="Meta", language="json")
+        with gr.Tab("Timeline Preview"):
+            gr.Markdown("#### Scrub through frames with onion-skinning and FPS control")
+            with gr.Row():
+                timeline_html = gr.HTML("""
+                <div id='px-timeline' style='display:flex;gap:12px;align-items:center'>
+                  <canvas id='px-canvas' width='128' height='128' style='image-rendering: pixelated;border:1px solid #ccc'></canvas>
+                  <div style='display:flex;flex-direction:column;gap:8px'>
+                    <input id='px-scrub' type='range' min='0' max='0' value='0'>
+                    <label>FPS <input id='px-fps' type='number' min='1' max='60' value='8'></label>
+                    <label>Onion α <input id='px-onion' type='range' min='0' max='0.6' step='0.05' value='0.25'></label>
+                    <button id='px-play'>Play/Pause</button>
+                  </div>
+                </div>
+                <script>
+                (async function(){
+                  const ctx = document.getElementById('px-canvas').getContext('2d');
+                  const scrub = document.getElementById('px-scrub');
+                  const fpsEl = document.getElementById('px-fps');
+                  const onionEl = document.getElementById('px-onion');
+                  const playBtn = document.getElementById('px-play');
+                  // This assumes PixStu writes frames.json alongside frames/ outputs
+                  const manifest = await fetch('./frames/frames.json?_=' + Date.now()).then(r=>r.json());
+                  const imgs = await Promise.all(manifest.frames.map(async (p)=> {
+                    const img = new Image(); img.src = './frames/' + p + '?_=' + Date.now();
+                    await img.decode(); return img;
+                  }));
+                  scrub.max = String(imgs.length - 1);
+                  let i=0, timer=null;
+                  function draw(index){
+                    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+                    const prev = imgs[(index-1+imgs.length)%imgs.length];
+                    const curr = imgs[index];
+                    const next = imgs[(index+1)%imgs.length];
+                    const α = parseFloat(onionEl.value);
+                    ctx.globalAlpha = α; ctx.drawImage(prev,0,0,128,128);
+                    ctx.globalAlpha = 1.0; ctx.drawImage(curr,0,0,128,128);
+                    ctx.globalAlpha = α; ctx.drawImage(next,0,0,128,128);
+                    ctx.globalAlpha = 1.0;
+                  }
+                  function play(){
+                    const fps = Math.max(1, Math.min(60, parseInt(fpsEl.value||'8',10)));
+                    if(timer) { clearInterval(timer); timer=null; return; }
+                    timer = setInterval(()=>{ i=(i+1)%imgs.length; scrub.value=String(i); draw(i); }, 1000/fps);
+                  }
+                  scrub.oninput = e => { i = parseInt(e.target.value,10); draw(i); };
+                  onionEl.oninput = ()=> draw(i);
+                  fpsEl.oninput = ()=> { if(timer){ clearInterval(timer); timer=null; play(); } };
+                  playBtn.onclick = play;
+                  draw(0);
+                })();
+                </script>
+                """)
+    status = gr.Textbox(label="Status")
 
     def _on_gen(prompt,negative,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json):
         img, pimg, m = generate(prompt,negative,-1,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json)
