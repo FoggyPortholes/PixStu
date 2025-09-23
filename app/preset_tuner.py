@@ -17,9 +17,22 @@ PRESET_PATH = os.path.join(PROJ, "configs", "curated_models.json")
 def _abs_under_models(path: Optional[str]) -> Optional[str]:
     if not path:
         return path
-    if os.path.isabs(path):
-        return os.path.normpath(path)
-    return os.path.normpath(os.path.abspath(os.path.join(MODELS_ROOT, path)))
+
+    expanded = os.path.expanduser(str(path))
+    if os.path.isabs(expanded):
+        return os.path.normpath(expanded)
+
+    normalized = os.path.normpath(expanded)
+
+    project_candidate = os.path.abspath(os.path.join(PROJ, normalized))
+    if os.path.exists(project_candidate):
+        return os.path.normpath(project_candidate)
+
+    parts = normalized.split(os.sep)
+    if parts and parts[0] == "models":
+        normalized = os.path.join(*parts[1:]) if len(parts) > 1 else ""
+
+    return os.path.normpath(os.path.abspath(os.path.join(MODELS_ROOT, normalized)))
 
 
 def _device() -> Tuple[str, torch.dtype]:
