@@ -1,24 +1,35 @@
 # PixStu
 
+PixStu focuses on generating consistent, reusable character art using Stable Diffusion XL pipelines with curated presets and optional reference conditioning.
+
 ## Applications
 
-- `app/pixel_char_studio.py`: Main Pixel Character Studio interface for generating pixel-art renders from text prompts.
-- `app/preset_tuner.py`: Lightweight utility for adjusting curated preset defaults and previewing the effect of new inference settings.
+- `app/pixel_char_studio.py`: Character Studio for prompt-driven character generation, LoRA presets, reference guidance, and metadata logging.
+- `app/sprite_sheet_studio.py`: Sprite Sheet Studio for packaging an existing sprite into mapped, multi-frame sheets.
 
-## Curated Presets
-
-Curated presets live in `configs/curated_models.json`. The preset tuner lets you tweak the recommended inference steps, guidance scale, and primary LoRA weight before saving the changes back to disk.
-
-To launch the tuner use:
+## Getting Started
 
 ```bash
-python -m app.preset_tuner
+pip install -r requirements.txt
+python -m app.pixel_char_studio
 ```
 
-The tool provides:
+The Character Studio exposes prompt input, preset selection, seed controls, reference uploads, and a built-in gallery sourced from `reference_gallery/`. Outputs (PNG, sprite sheets, metadata) are saved under `outputs/` at runtime.
 
-- A dropdown to select the preset to edit.
-- Sliders for denoising steps, guidance scale, and LoRA weight.
-- Buttons to update the preset on disk or preview the difference between the existing and proposed values using a fixed seed.
+Sprite sheet packaging can be launched separately:
 
-Preview renders use small 64×64 generations to keep iteration fast. When satisfied with the adjustments, press **Update Preset** to persist them.
+```bash
+python run_sprite_sheet_studio.py
+```
+
+## Configuration
+
+Curated presets live in `configs/curated_models.json`. Each entry can define a base SDXL model, optional LoRAs, and recommended inference parameters. Drop additional LoRAs or presets into `models/` and `configs/` respectively to extend the library.
+
+Reference assets can be added to `reference_gallery/` so they appear in the Character Studio gallery for quick conditioning.
+
+## Testing
+
+```bash
+pytest
+```

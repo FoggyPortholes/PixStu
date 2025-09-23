@@ -1,14 +1,46 @@
-﻿{
+{
   "presets": [
     {
-      "name": "SDXL + PixelArtXL",
+      "name": "SDXL-Character-Base",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
-      "refiner_model": "stabilityai/stable-diffusion-xl-refiner-1.0",
-      "lcm_dir": "models/lcm",
+      "loras": [],
+      "suggested": { "steps": 30, "guidance": 7.0 }
+    },
+    {
+      "name": "SDXL-Illustrated-Hero",
+      "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
       "loras": [
-        { "path": "models/lora/pixel-art-xl.safetensors", "weight": 1.0 }
+        {
+          "name": "pixel-art-xl",
+          "path": "models/lora/pixel-art-xl.safetensors",
+          "weight": 0.75
+        }
       ],
-      "suggested": { "mode": "Quality (Base)", "steps": 30, "guidance": 7.0 }
+      "suggested": { "steps": 28, "guidance": 6.5 }
+    },
+    {
+      "name": "SDXL-Anime-Companion",
+      "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "loras": [
+        {
+          "name": "anime-identity",
+          "path": "models/lora/anime-identity.safetensors",
+          "weight": 0.7
+        }
+      ],
+      "suggested": { "steps": 24, "guidance": 6.0 }
+    },
+    {
+      "name": "SDXL-Stylized-Mech",
+      "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "loras": [
+        {
+          "name": "mech-chrome",
+          "path": "models/lora/mech-chrome.safetensors",
+          "weight": 0.8
+        }
+      ],
+      "suggested": { "steps": 32, "guidance": 7.5 }
     }
   ]
 }

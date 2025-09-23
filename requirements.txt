@@ -3,6 +3,8 @@ imageio>=2.34.0
 # torch/torchvision installed below (CPU default)
 
 # P8: dependency pins for stability
+fastapi==0.110.3
+pydantic>=2.10.4,<2.11
 pillow==10.4.0
 diffusers==0.30.2
 transformers==4.44.0
