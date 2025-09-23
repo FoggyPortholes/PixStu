@@ -219,6 +219,12 @@ def save_sprite_sheet(
     if not frames:
         raise ValueError("No frames to save")
 
+    if columns <= 0:
+        raise ValueError("columns must be a positive integer")
+
+    if padding < 0:
+        raise ValueError("padding cannot be negative")
+
     rgba_frames = _ensure_rgba_frames(frames)
     width, height = rgba_frames[0].size
     rows = (len(rgba_frames) + columns - 1) // columns
