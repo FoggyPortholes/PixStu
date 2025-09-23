@@ -11,6 +11,11 @@ import gradio as gr
 import torch
 from diffusers import StableDiffusionXLImg2ImgPipeline, StableDiffusionXLPipeline
 
+try:
+    from .gif_creator import make_gif_from_sprite
+except ImportError:  # pragma: no cover - direct script execution fallback
+    from gif_creator import make_gif_from_sprite
+
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
 
@@ -213,6 +218,97 @@ def build_ui():
         btn.click(generate, inputs=[prompt, preset, seed, steps, guidance], outputs=[output_img, output_path])
         if not preset_choices:
             gr.Markdown("No curated presets found. Add entries to `configs/curated_models.json`.")
+
+        gif_preset_choices = [p.get("name") for p in PRESETS if p.get("name")]
+        default_gif_preset = gif_preset_choices[0] if gif_preset_choices else None
+        with gr.Accordion("GIF Maker (Prompt + Uploaded Sprite)", open=True):
+            with gr.Row():
+                sprite = gr.File(label="Upload base sprite", file_types=[".png", ".webp"], file_count="single")
+                preset_gif = gr.Dropdown(
+                    gif_preset_choices,
+                    value=default_gif_preset,
+                    label="Preset",
+                    interactive=bool(gif_preset_choices),
+                )
+            with gr.Row():
+                prompt_gif = gr.Textbox(
+                    label="Prompt",
+                    info="Describe the animation. If empty and preset allows, a default prompt is used.",
+                )
+            with gr.Row():
+                frames = gr.Slider(4, 24, value=8, step=1, label="Frames")
+                frame_size = gr.Slider(32, 256, value=64, step=16, label="Frame Size")
+                duration = gr.Slider(40, 300, value=90, step=5, label="Frame Duration (ms)")
+            with gr.Row():
+                motion = gr.Radio(["Idle", "Walk", "Run", "Attack"], value="Idle", label="Motion Preset")
+                seed_lock = gr.Number(value=42, label="Seed")
+                seed_jitter = gr.Slider(0, 25, value=0, step=1, label="Seed Jitter")
+            with gr.Row():
+                img_strength = gr.Slider(0.1, 0.8, value=0.35, step=0.05, label="Img2Img Strength")
+                lock_palette = gr.Checkbox(value=True, label="Palette Lock")
+                export_sheet = gr.Checkbox(value=True, label="Also Export Sprite Sheet")
+            with gr.Row():
+                make_btn = gr.Button("Create GIF", interactive=bool(gif_preset_choices))
+            with gr.Row():
+                gif_output = gr.File(label="Animated GIF Output")
+                sheet_output = gr.File(label="Sprite Sheet Output (optional)")
+                status = gr.Textbox(label="Status")
+
+            def _run_make_gif(
+                sprite_file,
+                preset_name,
+                prompt,
+                frames,
+                frame_size,
+                duration,
+                motion,
+                seed_lock,
+                seed_jitter,
+                img_strength,
+                lock_palette,
+                export_sheet,
+            ):
+                if sprite_file is None:
+                    return None, None, "Please upload a base sprite PNG/WEBP."
+                if not preset_name:
+                    return None, None, "Please select a preset."
+                try:
+                    gif_path, sheet_path = make_gif_from_sprite(
+                        sprite_path=sprite_file.name,
+                        preset_name=preset_name,
+                        prompt=prompt,
+                        frames=int(frames),
+                        frame_size=int(frame_size),
+                        duration_ms=int(duration),
+                        seed=int(seed_lock) if seed_lock is not None else None,
+                        seed_jitter=int(seed_jitter),
+                        motion_mode=motion,
+                        img_strength=float(img_strength),
+                        lock_palette=bool(lock_palette),
+                        export_sheet=bool(export_sheet),
+                    )
+                    return gif_path, sheet_path, "GIF created successfully."
+                except Exception as e:  # pragma: no cover - surfaced to UI
+                    return None, None, f"Error: {e}"
+
+            make_btn.click(
+                _run_make_gif,
+                inputs=[
+                    sprite,
+                    preset_gif,
+                    prompt_gif,
+                    frames,
+                    frame_size,
+                    duration,
+                    motion,
+                    seed_lock,
+                    seed_jitter,
+                    img_strength,
+                    lock_palette,
+                    export_sheet,
+                ],
+                outputs=[gif_output, sheet_output, status],
+            )
     return demo
 
 
