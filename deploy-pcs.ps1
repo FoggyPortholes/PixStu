@@ -44,8 +44,10 @@ Set-Content -Encoding UTF8 -Path (Join-Path $root "configs\curated_models.json")
 # 4) Tiny launcher that opens browser
 $runpy = @'
 import os
-from app.pixel_char_studio import demo
-port = int(os.getenv("PCS_PORT","7860"))
+from chargen.studio import build_app
+
+port = int(os.getenv("PCS_PORT", "7860"))
+demo = build_app()
 demo.launch(share=False, inbrowser=True, server_name="127.0.0.1", server_port=port, show_error=True)
 '@
 Set-Content -Encoding UTF8 -Path (Join-Path $root "run_pcs.py") -Value $runpy
@@ -266,7 +268,7 @@ python -m venv .venv
 call .\.venv\Scripts\activate
 pip install -r requirements.txt
 pip install torch torchvision
-python -m app.pixel_char_studio
+python -m chargen.studio
 endlocal
 '@
 Set-Content -Encoding ASCII -Path (Join-Path $root "Start Pixel Character Studio.bat") -Value $bat
@@ -280,4 +282,4 @@ $py = Join-Path $root ".\.venv\Scripts\python.exe"
 & $py -m pip install torch torchvision
 
 Write-Host "Ready. Launching..."
-& $py -m app.pixel_char_studio
+& $py -m chargen.studio
