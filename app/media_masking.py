@@ -11,6 +11,13 @@ from PIL import Image, ImageSequence
 
 from .media_exports import save_gif
 
+try:
+    import rembg  # type: ignore[import]
+
+    _HAS_REMBG = True
+except Exception:  # pragma: no cover - optional dependency
+    _HAS_REMBG = False
+
 OUTPUTS_DIR = os.environ.get(
     "PCS_OUTPUTS_DIR",
     os.path.normpath(os.path.join(os.path.dirname(__file__), "..", "outputs")),
@@ -72,6 +79,22 @@ def make_alpha(img: Image.Image, bg: Tuple[int, int, int], tol: int = 20) -> Ima
     return rgba
 
 
+def smart_alpha(
+    img: Image.Image,
+    tolerance: int = 20,
+    bg: Tuple[int, int, int] | None = None,
+) -> Image.Image:
+    """Return an alpha-masked image using ``rembg`` when available."""
+
+    if _HAS_REMBG:
+        return rembg.remove(img.convert("RGBA"))
+
+    if bg is None:
+        bg = estimate_bg_color(img)
+
+    return make_alpha(img, bg, tol=int(tolerance))
+
+
 def mask_gif(input_path: str, tolerance: int = 20, lock_palette: bool = True) -> str:
     """Apply background masking to a GIF file and return the output path."""
 
@@ -80,7 +103,9 @@ def mask_gif(input_path: str, tolerance: int = 20, lock_palette: bool = True) ->
         bg = estimate_bg_color(payload.convert("RGB"))
         frames: List[Image.Image] = []
         for frame in ImageSequence.Iterator(payload):
-            rgba = make_alpha(frame.convert("RGBA"), bg, tol=int(tolerance))
+            rgba = smart_alpha(
+                frame.convert("RGBA"), tolerance=int(tolerance), bg=bg
+            )
             frames.append(rgba)
 
     out_path = save_gif(
@@ -114,7 +139,7 @@ def mask_video_to_outputs(
         if index == 0:
             bg = bg_override or estimate_bg_color(img)
         assert bg is not None
-        frames.append(make_alpha(img, bg, tol=int(tolerance)))
+        frames.append(smart_alpha(img, tolerance=int(tolerance), bg=bg))
 
     gif_path: str | None = None
     png_dir: str | None = None
