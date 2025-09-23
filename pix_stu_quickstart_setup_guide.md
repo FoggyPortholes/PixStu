@@ -222,30 +222,30 @@ Run with `python tools/check_migration.py` after migration. CI can include this 
 
 ### Security Patches (apply first)
 
-1. **Sanitize QA Reports**
-2. **Harden Metadata Handling**
-3. **Safe Artifact Uploads**
+1. **Sanitize QA Reports** – introduce tooling to scrub PII, local paths, and filenames before QA data leaves the workstation.
+2. **Harden Metadata Handling** – validate and escape metadata fields to prevent corrupted JSON and injection of unsafe values.
+3. **Safe Artifact Uploads** – gate artifact publishing behind checksum validation and signed destinations to avoid tampering.
 
 ### Core Stability
 
-4. **Migration Script**
-5. **UI Drift Guard**
-6. **Logging/Debugging Enhancements**
+4. **Migration Script** – finalize automation that detects legacy `app/` assets and blocks merges until the new layout is enforced.
+5. **UI Drift Guard** – keep immutable tabs/controls under automated watch so design regressions surface immediately.
+6. **Logging/Debugging Enhancements** – standardize log levels and add structured debug output for faster incident triage.
 
 ### Feature Enhancements
 
-7. **Bullet-Proof Presets**
-8. **ControlNet & IP-Adapter Hooks**
-9. **AI-Assisted Editing**
-10. **Cross-Platform Setup Scripts**
+7. **Bullet-Proof Presets** – deliver the hardened preset flow with curated positives/negatives and consistent notebook outputs.
+8. **ControlNet & IP-Adapter Hooks** – expose plugin toggles end-to-end so advanced conditioning works from the main UI.
+9. **AI-Assisted Editing** – round out the edit workflow with richer masking, guidance prompts, and preview safeguards.
+10. **Cross-Platform Setup Scripts** – ship installer scripts for macOS, Windows, and Linux to reduce onboarding friction.
 
 ### QA & User Experience
 
-11. **User Ratings**
-12. **Rating Aggregation**
-13. **GitHub Actions QA Workflow**
-14. **QA Checklist**
-15. **Immutable Retro UI Theme**
+11. **User Ratings** – capture subjective feedback directly in the studio so presets can be tuned with real usage data.
+12. **Rating Aggregation** – automate rollups of rating data to spot regressions and highlight standout presets.
+13. **GitHub Actions QA Workflow** – add CI coverage that renders samples and publishes sanitized reports on every PR.
+14. **QA Checklist** – maintain a shared checklist to ensure manual validation covers every mandatory control.
+15. **Immutable Retro UI Theme** – lock the neon retro styling with shared CSS so visual identity isn’t quietly drifted.
 
 ## Patch Notes Template (Immutable)
 
@@ -318,4 +318,3 @@ jobs:
 ```
 
 This ensures immutable, append-only version tracking.
-

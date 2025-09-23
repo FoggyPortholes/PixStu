@@ -32,7 +32,7 @@ class CharacterGenerator:
             self.device = "cpu"
         self.txt2img = None
         self.img2img = None
-        self.inpaint = None
+        self._inpaint = None
 
     def _apply_loras(self, pipe):
         adapters = []
@@ -181,13 +181,13 @@ class CharacterGenerator:
         return kwargs
 
     def _ensure_inpaint(self):
-        if self.inpaint is None:
+        if self._inpaint is None:
             base = self.preset.get("base_model", "stabilityai/stable-diffusion-xl-base-1.0")
-            self.inpaint = StableDiffusionXLInpaintPipeline.from_pretrained(base, torch_dtype=self.dtype)
-            self._apply_loras(self.inpaint)
-            if hasattr(self.inpaint, "to"):
-                self.inpaint.to(self.device)
-        return self.inpaint
+            self._inpaint = StableDiffusionXLInpaintPipeline.from_pretrained(base, torch_dtype=self.dtype)
+            self._apply_loras(self._inpaint)
+            if hasattr(self._inpaint, "to"):
+                self._inpaint.to(self.device)
+        return self._inpaint
 
     def _make_progress_callbacks(
         self,
