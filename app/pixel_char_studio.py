@@ -1,4 +1,4 @@
-import os, json, glob, uuid, datetime, contextlib
+import os, json, glob, uuid, datetime, contextlib, logging
 
 import gradio as gr
 
@@ -37,6 +37,58 @@ _DEV_KIND = pipeline_cache.DEV_KIND
 _DTYPE = pipeline_cache.DTYPE
 _DEVICE = pipeline_cache.DEVICE
 
+_LOG_DIR = os.path.join(PROJ, "logs")
+_LOG_FILE = os.path.join(_LOG_DIR, "pixel_char_studio.log")
+_LOG_LEVEL = os.getenv("PCS_LOG_LEVEL", "INFO").upper()
+
+LOGGER = logging.getLogger(__name__)
+_LOGGING_CONFIGURED = False
+
+
+def _configure_logging() -> None:
+    """Ensure file logging is configured once for the application."""
+
+    global _LOGGING_CONFIGURED
+    if _LOGGING_CONFIGURED:
+        return
+
+    os.makedirs(_LOG_DIR, exist_ok=True)
+
+    level = getattr(logging, _LOG_LEVEL, logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s | %(levelname)s | %(name)s | %(message)s",
+        "%Y-%m-%d %H:%M:%S",
+    )
+
+    file_handler = logging.FileHandler(_LOG_FILE, encoding="utf-8")
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(level)
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
+    root_logger.addHandler(file_handler)
+
+    if not any(
+        isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)
+        for h in root_logger.handlers
+    ):
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        console_handler.setLevel(level)
+        root_logger.addHandler(console_handler)
+
+    LOGGER.debug("Logging configured. Writing to %s", _LOG_FILE)
+    _LOGGING_CONFIGURED = True
+
+
+_configure_logging()
+LOGGER.info(
+    "Pixel Character Studio initialising on device=%s dtype=%s kind=%s",
+    _DEVICE,
+    _DTYPE,
+    _DEV_KIND,
+)
+
 PALETTES = {
   "None": [],
   "DB16 (DawnBringer 16)": ["#140c1c","#442434","#30346d","#4e4a4e","#854c30","#346524","#d04648","#757161",
@@ -59,28 +111,48 @@ def to_pixel_art(img, scale=8, palette="DB16 (DawnBringer 16)", dither=False, cr
 def scan_loras():
     ldir = os.path.join(MODELS_ROOT,"lora")
     files = sorted(glob.glob(os.path.join(ldir,"*.safetensors")) + glob.glob(os.path.join(ldir,"*.ckpt")))
-    return [os.path.abspath(p) for p in files]
+    resolved = [os.path.abspath(p) for p in files]
+    LOGGER.debug("scan_loras: %s -> %d files", ldir, len(resolved))
+    return resolved
 
 def load_curated():
     try:
         with open(os.path.join(PROJ,"configs","curated_models.json"),"r",encoding="utf-8") as f:
-            return (json.load(f).get("presets") or [])
-    except: return []
+            presets = json.load(f).get("presets") or []
+            LOGGER.debug("Loaded %d curated presets", len(presets))
+            return presets
+    except Exception as exc:
+        LOGGER.warning("Unable to load curated presets: %s", exc)
+        return []
 
 DEFAULT_MODEL_ID = pipeline_cache.DEFAULT_MODEL_ID
 
 
 def load_base(model_id, quality, local_dir=None):
+    LOGGER.info(
+        "Loading base pipeline model_id=%s quality=%s local_dir=%s",
+        model_id,
+        quality,
+        local_dir,
+    )
     return pipeline_cache.get_txt2img(model_id, quality=quality, local_dir=local_dir)
 
 def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
-    return pipeline_cache.apply_loras(
+    LOGGER.debug(
+        "Configuring adapters quality=%s lcm_dir=%s loras=%s",
+        quality_mode,
+        lcm_dir,
+        loras,
+    )
+    adapters = pipeline_cache.apply_loras(
         pipe,
         quality_mode=quality_mode,
         lcm_dir=lcm_dir,
         loras=loras,
         lora_weights=lora_weights,
     )
+    LOGGER.debug("Active adapters: %s", adapters)
+    return adapters
 
 def _sanitize(s):
     if s is None: return ""
@@ -93,9 +165,22 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
     if not prompt: return None, None, {"error":"empty prompt"}
     if not TORCH_AVAILABLE:
         return None, None, {"error": "PyTorch is required to generate images. Please install torch."}
+    LOGGER.info(
+        "generate start prompt=%s seed=%s steps=%s cfg=%s size=%sx%s quality=%s",
+        prompt,
+        seed,
+        steps,
+        cfg,
+        w,
+        h,
+        quality,
+    )
     pipe = load_base(base_model, quality)
-    try: lw=json.loads(lora_weights_json) if lora_weights_json else {}
-    except: lw={}
+    try:
+        lw=json.loads(lora_weights_json) if lora_weights_json else {}
+    except Exception as exc:
+        LOGGER.warning("Invalid LoRA weights JSON (%s): %s", lora_weights_json, exc)
+        lw={}
     configure_adapters(pipe, lcm_dir, lora_files or [], lw, quality)
 
     steps=int(steps); cfg=float(cfg)
@@ -107,11 +192,15 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
     gen = torch.Generator(device=("cuda" if _DEV_KIND=="cuda" else "cpu")).manual_seed(int(seed))
     ac = (torch.autocast("cuda",dtype=torch.float16) if _DEV_KIND=="cuda" else
           torch.autocast("mps",dtype=torch.float16) if _DEV_KIND=="mps" else contextlib.nullcontext())
-    with ac:
-        img = pipe(prompt=prompt, negative_prompt=(negative or None),
-                   width=int(w), height=int(h),
-                   num_inference_steps=int(steps), guidance_scale=float(cfg),
-                   generator=gen).images[0]
+    try:
+        with ac:
+            img = pipe(prompt=prompt, negative_prompt=(negative or None),
+                       width=int(w), height=int(h),
+                       num_inference_steps=int(steps), guidance_scale=float(cfg),
+                       generator=gen).images[0]
+    except Exception:
+        LOGGER.exception("Pipeline generation failed")
+        raise
     pix = to_pixel_art(img, scale=int(pixel_scale), palette=str(palette),
                        dither=bool(dither), crisp=bool(crisp), sharpen=float(sharpen))
     active_adapters = pipeline_cache.get_active_adapters(pipe)
@@ -119,6 +208,7 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
             "width":int(w),"height":int(h),"palette":palette,"pixel_scale":int(pixel_scale),
             "model":base_model,"adapters":active_adapters[:], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
             "loras": lora_files or []}
+    LOGGER.info("generate complete seed=%s adapters=%s", seed, ",".join(active_adapters) or "none")
     return img, pix, meta
 
 def scan_base_models():
@@ -127,6 +217,7 @@ def scan_base_models():
         if os.path.isdir(d) and (os.path.isfile(os.path.join(d,"model_index.json")) or os.path.isfile(os.path.join(d,"config.json"))):
             items.append(d)
     items += ["stabilityai/stable-diffusion-xl-base-1.0"]
+    LOGGER.debug("scan_base_models: found %d entries", len(items))
     return items
 
 cur_presets = load_curated()
@@ -145,6 +236,7 @@ def _apply_curated(name):
         ap = _abs_under_models(q)
         if os.path.isfile(ap): loras.append(ap); wts[ap]=float(e.get("weight",1.0))
     sugg=p.get("suggested",{})
+    LOGGER.info("Applying curated preset %s", name)
     return [gr.update(value=base), gr.update(value=lcm), gr.update(value=loras),
             gr.update(value=json.dumps(wts)), gr.update(value=sugg.get("steps")), gr.update(value=sugg.get("guidance"))]
 
@@ -238,9 +330,13 @@ with gr.Blocks(analytics_enabled=False) as demo:
     status = gr.Textbox(label="Status")
 
     def _on_gen(prompt,negative,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json):
+        LOGGER.info("UI generate clicked")
         img, pimg, m = generate(prompt,negative,-1,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json)
         meta_json = json.dumps(m, indent=2, sort_keys=True) if isinstance(m, dict) else str(m)
-        return img, pimg, meta_json, (m.get("error") if isinstance(m,dict) and "error" in m else "")
+        error = m.get("error") if isinstance(m,dict) and "error" in m else ""
+        if error:
+            LOGGER.error("Generation failed: %s", error)
+        return img, pimg, meta_json, error
 
     gen.click(_on_gen,
         inputs=[prompt,negative,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lora_weights_json],
@@ -250,6 +346,26 @@ with gr.Blocks(analytics_enabled=False) as demo:
 
 if __name__ == "__main__":
     port = int(os.getenv("PCS_PORT","7860"))
-    os.environ["HF_HOME"] = os.path.join(PROJ, "hf_cache")
+    server_name = os.getenv("PCS_SERVER_NAME", "127.0.0.1")
+    open_browser = os.getenv("PCS_OPEN_BROWSER", "0").lower() in {"1", "true", "yes", "on"}
+    hf_home = os.path.join(PROJ, "hf_cache")
+    os.environ["HF_HOME"] = hf_home
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-    demo.launch(share=False, inbrowser=True, server_name="127.0.0.1", server_port=port, show_error=True)
+    LOGGER.info(
+        "Launching Pixel Character Studio at http://%s:%s (open_browser=%s)",
+        server_name,
+        port,
+        open_browser,
+    )
+    LOGGER.info("HF_HOME=%s", hf_home)
+    try:
+        demo.launch(
+            share=False,
+            inbrowser=open_browser,
+            server_name=server_name,
+            server_port=port,
+            show_error=True,
+        )
+    except Exception:
+        LOGGER.exception("Failed to launch Pixel Character Studio")
+        raise
