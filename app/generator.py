@@ -4,7 +4,8 @@ from typing import Optional
 from PIL import Image
 import torch
 from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
-from .paths import OUTPUTS, MODELS, ROOT
+from .paths import OUTPUTS
+from . import lora_catalog
 
 
 class CharacterGenerator:
@@ -17,26 +18,35 @@ class CharacterGenerator:
     def _apply_loras(self, pipe):
         adapters = []
         weights = []
-        for idx, entry in enumerate(self.preset.get("loras", [])):
-            raw_path = entry.get("path", "")
-            if not raw_path:
+        lora_entries = self.preset.get("loras", [])
+        for idx, entry in enumerate(lora_entries):
+            raw_path = entry.get("local_path") or entry.get("path") or ""
+            record = lora_catalog.resolve_path(raw_path)
+            if record is None and entry.get("name"):
+                record = lora_catalog.find_record(entry["name"])
+            if record and not record.exists and entry.get("repo_id"):
+                print(f"[INFO] Downloading LoRA '{record.name}' for preset '{self.preset.get('name', 'Unnamed')}'.")
+                print(f"[INFO] {lora_catalog.download(record.name)}")
+                record = lora_catalog.resolve_path(record.path) or record
+            elif record is None and entry.get("repo_id") and entry.get("name"):
+                print(f"[INFO] Attempting to download LoRA '{entry['name']}' for preset '{self.preset.get('name', 'Unnamed')}'.")
+                print(f"[INFO] {lora_catalog.download(entry['name'])}")
+                record = lora_catalog.find_record(entry["name"])
+            if record is None:
+                print(f"[WARN] LoRA entry {entry!r} could not be resolved.")
                 continue
-            if not os.path.isabs(raw_path):
-                candidates = [os.path.join(ROOT, raw_path), os.path.join(MODELS, raw_path)]
-                full_path = next((c for c in candidates if os.path.exists(c)), candidates[0])
-            else:
-                full_path = raw_path
+            if not record.exists:
+                print(f"[WARN] LoRA '{record.name}' is not available locally.")
+                continue
+            local_path = record.local_path
             weight = float(entry.get("weight", 1.0))
-            load_kwargs = {}
-            load_path = full_path
-            if os.path.isfile(full_path):
-                load_kwargs["weight_name"] = os.path.basename(full_path)
-                load_path = os.path.dirname(full_path)
-            adapter_name = entry.get("name") or f"preset_lora_{idx}"
+            adapter_name = entry.get("name") or record.name or f"preset_lora_{idx}"
+            load_dir = os.path.dirname(local_path)
+            weight_name = os.path.basename(local_path)
             try:
-                pipe.load_lora_weights(load_path, adapter_name=adapter_name, **load_kwargs)
+                pipe.load_lora_weights(load_dir, adapter_name=adapter_name, weight_name=weight_name)
             except Exception as exc:
-                print(f"[WARN] LoRA failed: {exc}")
+                print(f"[WARN] LoRA load failed for {adapter_name}: {exc}")
                 continue
             adapters.append(adapter_name)
             weights.append(weight)
@@ -45,7 +55,6 @@ class CharacterGenerator:
                 pipe.set_adapters(adapters, adapter_weights=weights)
             except Exception as exc:
                 try:
-                    # Fallback: fuse single adapter if advanced control is unavailable.
                     if len(adapters) == 1 and hasattr(pipe, "fuse_lora"):
                         pipe.fuse_lora(lora_scale=weights[0])
                     else:

@@ -1,0 +1,31 @@
+{
+  "loras": [
+    {
+      "name": "SDXL Offset Example",
+      "description": "Official SDXL offset LoRA for sharper detail (Stability AI).",
+      "repo_id": "stabilityai/sd_xl_offset_example-lora_1.0",
+      "filename": "sd_xl_offset_example-lora_1.0.safetensors",
+      "path": "stabilityai/stable-diffusion-xl-base-1.0/sd_xl_offset_example-lora_1.0.safetensors",
+      "preview_url": "https://huggingface.co/stabilityai/sd_xl_offset_example-lora_1.0/resolve/main/An_example_image.png",
+      "tags": ["sdxl", "detail", "general"]
+    },
+    {
+      "name": "Pixel Art Character XL",
+      "description": "Clean pixel character rendering tuned for SDXL.",
+      "repo_id": "CrucibleAI/Pixel-Art-XL-LoRA",
+      "filename": "pixel-art-xl.safetensors",
+      "path": "lora/pixel-art-xl.safetensors",
+      "preview_url": "https://huggingface.co/CrucibleAI/Pixel-Art-XL-LoRA/resolve/main/pixel_art_xl_sample.png",
+      "tags": ["sdxl", "pixel art", "character"]
+    },
+    {
+      "name": "Anime Companion SDXL",
+      "description": "Stylised anime companion character LoRA for SDXL.",
+      "repo_id": "Meina/AnimeCharacterSDXL-LoRA",
+      "filename": "anime-companion.safetensors",
+      "path": "lora/anime-companion.safetensors",
+      "preview_url": "https://huggingface.co/Meina/AnimeCharacterSDXL-LoRA/resolve/main/preview.png",
+      "tags": ["sdxl", "anime", "character"]
+    }
+  ]
+}
