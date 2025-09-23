@@ -11,7 +11,7 @@ PixStu focuses on generating consistent, reusable character art using Stable Dif
 
 ```bash
 pip install -r requirements.txt
-python -m app.pixel_char_studio
+python -m chargen.studio
 ```
 
 The Character Studio exposes prompt input, preset selection, seed controls, reference uploads, and a built-in gallery sourced from `reference_gallery/`. Outputs (PNG, sprite sheets, metadata) are saved under `outputs/` at runtime.

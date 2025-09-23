@@ -8,5 +8,5 @@ python -m venv .venv
 call .\.venv\Scripts\activate
 pip install -r requirements.txt
 pip install torch torchvision
-python -m app.pixel_char_studio
+python -m chargen.studio
 endlocal

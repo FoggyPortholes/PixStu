@@ -54,7 +54,8 @@ def _make_dummy_pipeline(label: str):
 def generator_env(monkeypatch, tmp_path):
     import importlib
 
-    generator = importlib.import_module("app.generator")
+    generator = importlib.import_module("chargen.generator")
+    model_setup = importlib.import_module("chargen.model_setup")
 
     outputs_dir = tmp_path / "outputs"
     outputs_dir.mkdir()
@@ -71,9 +72,11 @@ def generator_env(monkeypatch, tmp_path):
         cuda=SimpleNamespace(is_available=lambda: False),
     )
 
-    monkeypatch.setattr(generator, "OUTPUTS", str(outputs_dir))
-    monkeypatch.setattr(generator, "MODELS", str(models_dir))
-    monkeypatch.setattr(generator, "ROOT", str(tmp_path))
+    monkeypatch.setattr(model_setup, "OUTPUTS", str(outputs_dir))
+    monkeypatch.setattr(model_setup, "MODELS", str(models_dir))
+    monkeypatch.setattr(model_setup, "LORAS", str(lora_dir))
+    monkeypatch.setattr(model_setup, "ROOT", str(tmp_path))
+    monkeypatch.setattr(generator, "model_setup", model_setup)
     monkeypatch.setattr(generator, "torch", torch_stub)
 
     txt2img_cls = _make_dummy_pipeline("Txt2Img")

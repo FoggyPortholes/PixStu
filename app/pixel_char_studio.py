@@ -1,6 +1,6 @@
 import os
 import socket
-from .character_studio import build_ui
+from chargen.studio import build_app
 
 
 def _env_port() -> int | None:
@@ -33,7 +33,7 @@ def _pick_port(host: str) -> int | None:
 
 
 if __name__ == "__main__":
-    demo = build_ui()
+    demo = build_app()
     server_name = os.environ.get("PCS_SERVER_NAME", "127.0.0.1")
     port = _pick_port(server_name)
     try:
