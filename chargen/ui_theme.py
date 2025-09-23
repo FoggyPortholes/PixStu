@@ -72,6 +72,12 @@ button.chargen-primary:hover {
 #reference-gallery .thumbnail-item {
     border: 2px solid rgba(60, 255, 208, 0.4);
 }
+
+.chargen-hint {
+    font-size: 11px;
+    color: var(--chargen-muted);
+    margin-top: 4px;
+}
 """
 
 

@@ -113,21 +113,34 @@ def build_ui() -> gr.Blocks:
                         )
                     gr.Markdown("### Reference Guidance", elem_classes=["chargen-group-title"])
                     with gr.Row():
-                        ref = gr.Image(
-                            type="filepath",
-                            label="Reference Image",
-                            info="Drop a character reference to enable img2img.",
-                        )
-                        strength = gr.Slider(
-                            minimum=0.1,
-                            maximum=0.9,
-                            value=0.35,
-                            step=0.05,
-                            label="Ref Strength",
-                            info="Blend between prompt and reference (img2img).",
-                        )
+                        with gr.Column():
+                            ref = gr.Image(
+                                type="filepath",
+                                label="Reference Image",
+                            )
+                            gr.Markdown(
+                                "Drop a character reference to enable img2img.",
+                                elem_classes=["chargen-hint"],
+                            )
+                        with gr.Column():
+                            strength = gr.Slider(
+                                minimum=0.1,
+                                maximum=0.9,
+                                value=0.35,
+                                step=0.05,
+                                label="Ref Strength",
+                                info="Blend between prompt and reference (img2img).",
+                            )
+                            gr.Markdown(
+                                "Higher values cling to the reference silhouette.",
+                                elem_classes=["chargen-hint"],
+                            )
                     generate_btn = gr.Button("Generate", elem_classes=["chargen-primary"])
                     out_img = gr.Image(label="Output Character", interactive=False)
+                    gr.Markdown(
+                        "Results land in the `outputs/` directory with metadata logs.",
+                        elem_classes=["chargen-hint"],
+                    )
                     meta_box = gr.Textbox(
                         label="Metadata JSON",
                         interactive=False,
