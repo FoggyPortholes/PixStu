@@ -50,7 +50,7 @@ DEV, DTYPE = _device()
 def _load_presets() -> List[dict]:
     if not os.path.isfile(PRESET_PATH):
         return []
-    with open(PRESET_PATH, "r", encoding="utf-8") as fh:
+    with open(PRESET_PATH, "r", encoding="utf-8-sig") as fh:
         payload = json.load(fh)
     return payload.get("presets", [])
 

@@ -117,7 +117,11 @@ def scan_loras():
 
 def load_curated():
     try:
-        with open(os.path.join(PROJ,"configs","curated_models.json"),"r",encoding="utf-8") as f:
+        with open(
+            os.path.join(PROJ, "configs", "curated_models.json"),
+            "r",
+            encoding="utf-8-sig",
+        ) as f:
             presets = json.load(f).get("presets") or []
             LOGGER.debug("Loaded %d curated presets", len(presets))
             return presets
