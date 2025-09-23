@@ -6,3 +6,4 @@ from active maintenance.
 
 Contents include the original `spriterig_v1_1.py` script, its patch utilities, and the
 `minitravy` plugin system. Use at your own risk.
+- `tools/` — contains secondary utilities like the preset tuner UI.
