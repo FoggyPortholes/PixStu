@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from app import sprite_sheet_builder
+from chargen.sprites import builder as sprite_sheet_builder
 
 
 @pytest.fixture

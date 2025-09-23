@@ -6,7 +6,7 @@ from typing import List
 
 import gradio as gr
 
-from .sprite_sheet_builder import build_sprite_sheet, list_presets
+from .builder import build_sprite_sheet, list_presets
 
 PRESETS = list_presets()
 PRESET_CHOICES = [preset.name for preset in PRESETS]
@@ -92,7 +92,7 @@ with gr.Blocks(analytics_enabled=False) as demo:
         )
 
     with gr.Accordion("Preset details", open=False):
-        preset_md = gr.Markdown(
+        gr.Markdown(
             "\n".join(
                 f"**{preset.name}** — {preset.description}" for preset in PRESETS
             )
@@ -120,5 +120,14 @@ with gr.Blocks(analytics_enabled=False) as demo:
         outputs=[sheet_file, mapping_file, zip_file, preview_gallery, status_box],
     )
 
-if __name__ == "__main__":
-    demo.launch(share=False, inbrowser=True, server_name="127.0.0.1", server_port=7865, show_error=True)
+__all__ = ["demo"]
+
+
+if __name__ == "__main__":  # pragma: no cover - convenience launch
+    demo.launch(
+        share=False,
+        inbrowser=True,
+        server_name=os.getenv("PCS_SERVER_NAME", "127.0.0.1"),
+        server_port=int(os.getenv("PCS_SPRITE_SHEET_PORT", "7865")),
+        show_error=True,
+    )

@@ -11,9 +11,9 @@ from typing import Iterable, List, Sequence, Tuple
 
 from PIL import Image, ImageEnhance
 
-ROOT = os.path.abspath(os.path.dirname(__file__))
-PROJ = os.path.abspath(os.path.join(ROOT, ".."))
-OUTPUTS_DIR = os.environ.get("PCS_OUTPUTS_DIR", os.path.join(PROJ, "outputs"))
+from .. import model_setup
+
+OUTPUTS_DIR = os.environ.get("PCS_OUTPUTS_DIR", model_setup.OUTPUTS)
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
 
@@ -114,8 +114,7 @@ def _apply_ops(img: Image.Image, ops: Iterable[str]) -> Image.Image:
             shadow_sprite = Image.new("RGBA", frame.size, (0, 0, 0, 255))
             shadow_sprite.putalpha(alpha)
             shadow.paste(shadow_sprite, shadow_offset, shadow_sprite)
-            combined = Image.alpha_composite(shadow, frame)
-            frame = combined
+            frame = Image.alpha_composite(shadow, frame)
         elif op.startswith("opacity:"):
             try:
                 pct = float(op.split(":", 1)[1])
@@ -125,7 +124,6 @@ def _apply_ops(img: Image.Image, ops: Iterable[str]) -> Image.Image:
             r, g, b, a = frame.split()
             a = a.point(lambda px: int(px * pct))
             frame.putalpha(a)
-        # unknown ops are ignored intentionally
     return frame
 
 
@@ -141,13 +139,13 @@ def _parse_background(color: str | None) -> Tuple[int, int, int, int]:
         b = int(color[4:6], 16)
         a = 255 if len(color) == 6 else int(color[6:8], 16)
         return (r, g, b, a)
-    NAMED = {
+    named = {
         "black": (0, 0, 0, 255),
         "white": (255, 255, 255, 255),
         "gray": (96, 96, 96, 255),
         "transparent": (0, 0, 0, 0),
     }
-    return NAMED.get(color.lower(), (0, 0, 0, 0))
+    return named.get(color.lower(), (0, 0, 0, 0))
 
 
 def _timestamp(prefix: str, suffix: str) -> str:
@@ -213,6 +211,7 @@ def build_sprite_sheet(
             }
         )
 
+    model_setup.ensure_directories()
     sheet_path = os.path.join(OUTPUTS_DIR, _timestamp("sprite_sheet", ".png"))
     sheet.save(sheet_path)
 

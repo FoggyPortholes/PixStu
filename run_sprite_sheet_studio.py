@@ -1,7 +1,7 @@
 import os
 
 if __name__ == "__main__":
-    from app.sprite_sheet_studio import demo
+    from chargen.sprites.studio import demo
 
     port = int(os.getenv("PCS_SPRITE_SHEET_PORT", "7865"))
     server_name = os.getenv("PCS_SERVER_NAME", "127.0.0.1")
