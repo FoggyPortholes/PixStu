@@ -62,8 +62,12 @@ def extract_palette(img: Image.Image, max_colors: int = 32) -> Image.Image:
 def apply_palette(img: Image.Image, palette_donor: Image.Image) -> Image.Image:
     """Quantize ``img`` using the palette from ``palette_donor``."""
 
-    quantized = img.convert("RGB").quantize(palette=palette_donor)
-    return quantized.convert("RGBA")
+    rgba = img.convert("RGBA")
+    alpha = rgba.getchannel("A")
+    quantized = rgba.convert("RGB").quantize(palette=palette_donor)
+    palettized = quantized.convert("RGBA")
+    palettized.putalpha(alpha)
+    return palettized
 
 
 def _rgb(img: Image.Image) -> Image.Image:
