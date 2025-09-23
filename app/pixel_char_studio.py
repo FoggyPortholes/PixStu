@@ -21,10 +21,12 @@ else:
         return _orig_json_schema_to_python_type(schema, defs)
 
     _grc_utils._json_schema_to_python_type = _pcs_json_schema_to_python_type
-import torch
 from PIL import Image, ImageColor, ImageFilter
 
 from . import pipeline_cache
+
+torch = pipeline_cache.TORCH
+TORCH_AVAILABLE = pipeline_cache.TORCH_AVAILABLE
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
@@ -89,6 +91,8 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
              base_model, lcm_dir, lora_files, lora_weights_json):
     prompt=_sanitize(prompt); negative=_sanitize(negative)
     if not prompt: return None, None, {"error":"empty prompt"}
+    if not TORCH_AVAILABLE:
+        return None, None, {"error": "PyTorch is required to generate images. Please install torch."}
     pipe = load_base(base_model, quality)
     try: lw=json.loads(lora_weights_json) if lora_weights_json else {}
     except: lw={}

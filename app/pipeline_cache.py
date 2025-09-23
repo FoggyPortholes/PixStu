@@ -6,7 +6,10 @@ import os
 import sys
 from typing import Dict, List, Optional, Sequence, Tuple
 
-import torch
+try:  # pragma: no cover - runtime dependency may be missing
+    import torch
+except Exception:  # pragma: no cover - gracefully handle missing torch
+    torch = None  # type: ignore[assignment]
 
 try:  # pragma: no cover - optional imports depend on diffusers version
     from diffusers import (
@@ -32,7 +35,9 @@ MODELS_ROOT = os.getenv("PCS_MODELS_ROOT", os.path.join(EXE_DIR, "models"))
 DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
 
 
-def _device() -> Tuple[str, torch.dtype, str]:
+def _device() -> Tuple[str, Optional["torch.dtype"], str]:
+    if torch is None:
+        return "cpu", None, "cpu"
     if torch.cuda.is_available():
         return "cuda", torch.float16, "cuda"
     if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
@@ -80,12 +85,17 @@ def _resolve_model_id(model_id: Optional[str], local_dir: Optional[str]) -> str:
 def _load_pipeline(loader, model_id: str) -> DiffusionPipeline:
     if DiffusionPipeline is None:
         raise RuntimeError("diffusers is required to load Stable Diffusion pipelines")
+    if torch is None:
+        raise RuntimeError("PyTorch is required to load Stable Diffusion pipelines")
+
+    torch_dtype = DTYPE if DEV_KIND != "dml" else torch.float32
+    variant = "fp16" if DTYPE == torch.float16 else None
 
     pipe = loader.from_pretrained(  # type: ignore[attr-defined]
         model_id,
         use_safetensors=True,
-        torch_dtype=(DTYPE if DEV_KIND != "dml" else torch.float32),
-        variant=("fp16" if DTYPE == torch.float16 else None),
+        torch_dtype=torch_dtype,
+        variant=variant,
     )
     pipe.to(DEVICE)
     with contextlib.suppress(Exception):
@@ -200,6 +210,10 @@ def get_active_adapters(pipe: DiffusionPipeline) -> List[str]:
     return _PIPE_ACTIVE_ADAPTERS.get(id(pipe), [])[:]
 
 
+TORCH_AVAILABLE = torch is not None
+TORCH = torch
+
+
 __all__ = [
     "DEFAULT_MODEL_ID",
     "DEV_KIND",
@@ -213,4 +227,6 @@ __all__ = [
     "apply_loras",
     "get_active_adapters",
     "resolve_under_models",
+    "TORCH",
+    "TORCH_AVAILABLE",
 ]
