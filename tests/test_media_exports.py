@@ -69,6 +69,19 @@ def test_save_functions_reject_empty_sequences(tmp_path):
         module.save_sprite_sheet([], basename="empty")
 
 
+def test_apply_palette_preserves_alpha(tmp_path):
+    module = _reload_module(tmp_path)
+
+    donor = module.extract_palette(Image.new("RGBA", (2, 2), (255, 0, 0, 255)))
+    src = Image.new("RGBA", (2, 2), (0, 0, 255, 0))
+    src.putpixel((1, 1), (0, 255, 0, 200))
+
+    palettized = module.apply_palette(src, donor)
+
+    assert palettized.getpixel((0, 0))[3] == 0
+    assert palettized.getpixel((1, 1))[3] == 200
+
+
 def test_write_frames_generates_manifest(tmp_path):
     module = _reload_module(tmp_path)
     frames = _solid_frames(3)
