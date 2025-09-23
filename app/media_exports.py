@@ -2,16 +2,21 @@
 
 from __future__ import annotations
 
+import math
 import os
 import time
 from typing import Iterable, List, Sequence, Tuple
 
-from PIL import Image
+from PIL import Image, ImageSequence
 
 __all__ = [
     "OUTPUTS_DIR",
     "apply_palette",
+    "estimate_bg_color",
     "extract_palette",
+    "make_alpha",
+    "mask_gif",
+    "mask_video_to_outputs",
     "nn_resize",
     "save_gif",
     "save_sprite_sheet",
@@ -49,6 +54,57 @@ def apply_palette(img: Image.Image, palette_donor: Image.Image) -> Image.Image:
 
     quantized = img.convert("RGB").quantize(palette=palette_donor)
     return quantized.convert("RGBA")
+
+
+def _rgb(img: Image.Image) -> Image.Image:
+    """Return a copy of *img* in RGB mode."""
+
+    return img.convert("RGB") if img.mode != "RGB" else img
+
+
+def estimate_bg_color(img: Image.Image) -> Tuple[int, int, int]:
+    """Estimate the background colour of ``img`` by sampling its corners."""
+
+    rgb = _rgb(img)
+    width, height = rgb.size
+    samples = [
+        rgb.getpixel((0, 0)),
+        rgb.getpixel((width - 1, 0)),
+        rgb.getpixel((0, height - 1)),
+        rgb.getpixel((width - 1, height - 1)),
+    ]
+
+    counts: dict[Tuple[int, int, int], int] = {}
+    for colour in samples:
+        counts[colour] = counts.get(colour, 0) + 1
+
+    mode = max(counts.items(), key=lambda kv: kv[1])[0]
+    if counts[mode] >= 2:
+        return mode
+
+    red = sum(colour[0] for colour in samples) // 4
+    green = sum(colour[1] for colour in samples) // 4
+    blue = sum(colour[2] for colour in samples) // 4
+    return (red, green, blue)
+
+
+def _dist(c1: Tuple[int, int, int], c2: Tuple[int, int, int]) -> float:
+    return math.sqrt(sum((a - b) ** 2 for a, b in zip(c1, c2)))
+
+
+def make_alpha(img: Image.Image, bg: Tuple[int, int, int], tol: int = 20) -> Image.Image:
+    """Return an RGBA copy of ``img`` where colours near ``bg`` are transparent."""
+
+    rgba = img.convert("RGBA")
+    pixels = rgba.load()
+    width, height = rgba.size
+
+    for y in range(height):
+        for x in range(width):
+            r, g, b, a = pixels[x, y]
+            if _dist((r, g, b), bg) <= tol:
+                pixels[x, y] = (r, g, b, 0)
+    return rgba
 
 
 def _ensure_rgba_frames(frames: Iterable[Image.Image]) -> List[Image.Image]:
@@ -122,4 +178,69 @@ def save_sprite_sheet(
     out_path = os.path.join(OUTPUTS_DIR, f"{basename}_{timestamp}.png")
     sheet.save(out_path)
     return out_path
+
+
+def mask_gif(input_path: str, tolerance: int = 20, lock_palette: bool = True) -> str:
+    """Return a transparent GIF created by removing a solid background."""
+
+    with Image.open(input_path) as payload:
+        base_rgb = payload.convert("RGB")
+        bg_colour = estimate_bg_color(base_rgb)
+        frames: List[Image.Image] = []
+        for frame in ImageSequence.Iterator(payload):
+            rgba = make_alpha(frame.convert("RGBA"), bg_colour, tol=int(tolerance))
+            frames.append(rgba)
+
+        duration = payload.info.get("duration", 90)
+        loop = payload.info.get("loop", 0)
+
+    return save_gif(frames, duration_ms=duration, loop=loop, lock_palette=lock_palette)
+
+
+def mask_video_to_outputs(
+    input_path: str,
+    tolerance: int = 20,
+    target_size: Tuple[int, int] | None = None,
+    export_gif: bool = True,
+    export_png_seq: bool = True,
+    bg_override: Tuple[int, int, int] | None = None,
+) -> Tuple[str | None, str | None]:
+    """Mask a video file and optionally export a GIF and PNG sequence."""
+
+    import imageio.v3 as iio
+
+    reader = iio.imiter(input_path)
+    frames: List[Image.Image] = []
+    bg_colour: Tuple[int, int, int] | None = None
+
+    for index, frame in enumerate(reader):
+        image = Image.fromarray(frame)
+        if target_size:
+            image = image.resize(target_size, Image.NEAREST)
+
+        if index == 0:
+            bg_colour = bg_override or estimate_bg_color(image)
+
+        if bg_colour is None:
+            raise ValueError("Unable to determine background colour")
+
+        frames.append(make_alpha(image, bg_colour, tol=int(tolerance)))
+
+    if not frames:
+        raise ValueError("No frames extracted from video")
+
+    gif_path: str | None = None
+    png_dir: str | None = None
+
+    if export_gif:
+        gif_path = save_gif(frames, duration_ms=90, loop=0, lock_palette=True)
+
+    if export_png_seq:
+        timestamp = int(time.time())
+        png_dir = os.path.join(OUTPUTS_DIR, f"masked_seq_{timestamp}")
+        os.makedirs(png_dir, exist_ok=True)
+        for idx, frame in enumerate(frames):
+            frame.save(os.path.join(png_dir, f"frame_{idx:04d}.png"))
+
+    return gif_path, png_dir
 
