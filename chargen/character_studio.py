@@ -1,6 +1,8 @@
 import os
+import queue
 import random
-from typing import Tuple
+import threading
+from typing import Generator, Tuple
 
 import gradio as gr
 
@@ -13,6 +15,7 @@ from . import model_setup, ui_guard, ui_theme
 PRESETS = Presets()
 CONSISTENCY_SUFFIX = ", highly coherent character design, consistent identity, sharp details, clean silhouette"
 EXPECTED_TABS = ["Character Studio", "Reference Gallery"]
+PREVIEW_INTERVAL = 4
 
 
 def _augment_prompt(prompt: str) -> str:
@@ -20,7 +23,7 @@ def _augment_prompt(prompt: str) -> str:
     return (prompt + CONSISTENCY_SUFFIX).strip(", ")
 
 
-def _run_generation(
+def _stream_generation(
     prompt_txt: str,
     preset_name: str,
     seed_val: float,
@@ -28,7 +31,7 @@ def _run_generation(
     size_val: float,
     ref_path: str,
     ref_strength: float,
-) -> Tuple[str | None, str, str]:
+) -> Generator:
     try:
         preset = PRESETS.get(preset_name) or {}
         generator = CharacterGenerator(preset)
@@ -37,28 +40,87 @@ def _run_generation(
             seed_int = seed_int + random.randint(0, int(jitter_val))
         augmented = _augment_prompt(prompt_txt)
 
-        if ref_path:
-            out_path = generator.refine(
-                ref_path,
-                augmented,
-                strength=float(ref_strength),
-                seed=seed_int,
-                size=int(size_val),
-            )
-        else:
-            out_path = generator.generate(augmented, seed=seed_int, size=int(size_val))
+        suggested_steps = int(preset.get("suggested", {}).get("steps", 30))
+        progress_interval = max(1, suggested_steps // PREVIEW_INTERVAL)
 
-        metadata = {
-            "prompt": augmented,
-            "preset": preset_name,
-            "seed": seed_int,
-            "size": int(size_val),
-            "ref": bool(ref_path),
-        }
-        meta_path = save_metadata(os.path.dirname(out_path), metadata)
-        return out_path, meta_path, "Done"
+        if ref_path:
+            run_kwargs = dict(
+                ref_image_path=ref_path,
+                prompt=augmented,
+                strength=float(ref_strength),
+            )
+            run_fn = generator.refine
+        else:
+            run_kwargs = dict(prompt=augmented)
+            run_fn = generator.generate
+
+        result_queue: "queue.Queue[tuple]" = queue.Queue()
+
+        def _progress(step: int, total: int, image):
+            result_queue.put(("preview", step, total, image))
+
+        def _worker():
+            try:
+                out_path = run_fn(
+                    seed=seed_int,
+                    size=int(size_val),
+                    progress_callback=_progress,
+                    progress_interval=progress_interval,
+                    **run_kwargs,
+                )
+                metadata = {
+                    "prompt": augmented,
+                    "preset": preset_name,
+                    "seed": seed_int,
+                    "size": int(size_val),
+                    "ref": bool(ref_path),
+                }
+                meta_path = save_metadata(os.path.dirname(out_path), metadata)
+                result_queue.put(("final", out_path, meta_path))
+            except Exception as exc:
+                result_queue.put(("error", str(exc)))
+            finally:
+                result_queue.put(("done", None))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        preview_image = None
+        while True:
+            tag, *payload = result_queue.get()
+            if tag == "preview":
+                step_index, total, image = payload
+                preview_image = image
+                yield (
+                    gr.update(value=preview_image),
+                    gr.update(),
+                    gr.update(),
+                    gr.update(value=f"Rendering… step {step_index + 1}/{total}"),
+                )
+            elif tag == "final":
+                out_path, meta_path = payload
+                yield (
+                    gr.update(value=preview_image or out_path),
+                    gr.update(value=out_path),
+                    gr.update(value=meta_path),
+                    gr.update(value="Done"),
+                )
+            elif tag == "error":
+                message = payload[0]
+                yield (
+                    gr.update(value=preview_image),
+                    gr.update(value=None),
+                    gr.update(value=""),
+                    gr.update(value=f"Error: {message}"),
+                )
+            elif tag == "done":
+                break
     except Exception as exc:  # pragma: no cover - runtime safety
-        return None, "", f"Error: {exc}"
+        yield (
+            gr.update(value=None),
+            gr.update(value=None),
+            gr.update(value=""),
+            gr.update(value=f"Error: {exc}"),
+        )
 
 
 def build_ui() -> gr.Blocks:
@@ -136,7 +198,8 @@ def build_ui() -> gr.Blocks:
                                 elem_classes=["chargen-hint"],
                             )
                     generate_btn = gr.Button("Generate", elem_classes=["chargen-primary"])
-                    out_img = gr.Image(label="Output Character", interactive=False)
+                    preview_img = gr.Image(label="Live Preview", interactive=False)
+                    out_img = gr.Image(label="Final Character", interactive=False)
                     gr.Markdown(
                         "Results land in the `outputs/` directory with metadata logs.",
                         elem_classes=["chargen-hint"],
@@ -153,9 +216,9 @@ def build_ui() -> gr.Blocks:
                     )
 
                 generate_btn.click(
-                    _run_generation,
+                    _stream_generation,
                     inputs=[prompt, preset, seed, jitter, size, ref, strength],
-                    outputs=[out_img, meta_box, status],
+                    outputs=[preview_img, out_img, meta_box, status],
                 )
 
             with gr.TabItem("Reference Gallery"):

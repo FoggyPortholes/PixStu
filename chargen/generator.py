@@ -1,6 +1,6 @@
 import os
 import time
-from typing import Optional
+from typing import Callable, Optional
 
 from PIL import Image
 import torch
@@ -82,6 +82,31 @@ class CharacterGenerator:
             self._apply_loras(self.img2img)
         return self.img2img
 
+    def _make_progress_callback(
+        self,
+        pipe,
+        total_steps: int,
+        progress_callback: Optional[Callable[[int, int, Image.Image], None]],
+        progress_interval: int,
+    ):
+        if progress_callback is None:
+            return None
+
+        interval = max(1, int(progress_interval))
+
+        def _callback(step: int, _timestep: int, latents):
+            if step % interval and step != total_steps - 1:
+                return
+            try:
+                with torch.no_grad():
+                    decoded = pipe.decode_latents(latents)
+                    images = pipe.image_processor.postprocess(decoded, output_type="pil")
+                progress_callback(step, total_steps, images[0])
+            except Exception as exc:  # pragma: no cover - preview failures are non-fatal
+                print(f"[WARN] Preview callback failed: {exc}")
+
+        return _callback
+
     def generate(
         self,
         prompt: str,
@@ -89,11 +114,15 @@ class CharacterGenerator:
         steps: Optional[int] = None,
         guidance: Optional[float] = None,
         size: int = 512,
+        progress_callback: Optional[Callable[[int, int, Image.Image], None]] = None,
+        progress_interval: int = 4,
     ) -> str:
         steps = int(steps or self.preset.get("suggested", {}).get("steps", 30))
         guidance = float(guidance or self.preset.get("suggested", {}).get("guidance", 7.0))
         gen = torch.manual_seed(int(seed))
         pipe = self._ensure_txt2img()
+        callback = self._make_progress_callback(pipe, steps, progress_callback, progress_interval)
+        callback_kwargs = {"callback_on_step_end": callback} if callback else {}
         image = pipe(
             prompt=prompt,
             num_inference_steps=steps,
@@ -101,6 +130,7 @@ class CharacterGenerator:
             generator=gen,
             height=size,
             width=size,
+            **callback_kwargs,
         ).images[0]
         model_setup.ensure_directories()
         path = os.path.join(model_setup.OUTPUTS, f"char_{int(time.time())}.png")
@@ -116,12 +146,16 @@ class CharacterGenerator:
         steps: Optional[int] = None,
         guidance: Optional[float] = None,
         size: int = 512,
+        progress_callback: Optional[Callable[[int, int, Image.Image], None]] = None,
+        progress_interval: int = 4,
     ) -> str:
         steps = int(steps or self.preset.get("suggested", {}).get("steps", 30))
         guidance = float(guidance or self.preset.get("suggested", {}).get("guidance", 7.0))
         gen = torch.manual_seed(int(seed))
         base = Image.open(ref_image_path).convert("RGBA").resize((size, size), Image.NEAREST)
         pipe = self._ensure_img2img()
+        callback = self._make_progress_callback(pipe, steps, progress_callback, progress_interval)
+        callback_kwargs = {"callback_on_step_end": callback} if callback else {}
         out = pipe(
             prompt=prompt,
             image=base,
@@ -129,6 +163,7 @@ class CharacterGenerator:
             guidance_scale=guidance,
             num_inference_steps=steps,
             generator=gen,
+            **callback_kwargs,
         ).images[0]
         model_setup.ensure_directories()
         path = os.path.join(model_setup.OUTPUTS, f"char_refined_{int(time.time())}.png")
