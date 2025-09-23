@@ -8,7 +8,7 @@ from typing import Dict, Optional, Sequence, Tuple
 
 from PIL import Image, ImageOps
 
-from . import pipeline_cache
+from . import media_exports, pipeline_cache
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
@@ -69,8 +69,9 @@ def make_gif_from_sprite(
     img_strength: float,
     lock_palette: bool,
     export_sheet: bool,
-) -> Tuple[str, Optional[str]]:
-    """Create an animated GIF and optional sprite sheet from a single sprite.
+    export_preview: bool = False,
+) -> Tuple[str, Optional[str], Optional[str]]:
+    """Create an animated GIF and optional preview exports from a sprite.
 
     The implementation is intentionally lightweight: it currently reuses the
     uploaded sprite for every frame while applying basic resizing so that the
@@ -117,4 +118,8 @@ def make_gif_from_sprite(
         sheet_path = os.path.join(OUTPUTS_DIR, sheet_filename)
         sheet.save(sheet_path)
 
-    return gif_path, sheet_path
+    preview_dir: Optional[str] = None
+    if export_preview:
+        preview_dir = media_exports.write_frames(frame_sequence)
+
+    return gif_path, sheet_path, preview_dir
