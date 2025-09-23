@@ -32,9 +32,9 @@ def _pick_port(host: str) -> int | None:
 
 
 if __name__ == "__main__":
-    from app.character_studio import build_ui
+    from chargen.studio import build_app
 
-    demo = build_ui()
+    demo = build_app()
     server_name = os.getenv("PCS_SERVER_NAME", "127.0.0.1")
     port = _pick_port(server_name)
     open_browser = os.getenv("PCS_OPEN_BROWSER", "0").lower() in {"1", "true", "yes", "on"}
