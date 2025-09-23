@@ -43,10 +43,34 @@ def _unique_path(suffix: str) -> str:
     return os.path.join(OUTPUTS_DIR, filename)
 
 
-def save_gif(frames: Sequence[Image.Image], *, duration_ms: int = 120, loop: int = 0) -> str:
+def _lock_palette(frames: Sequence[Image.Image]) -> Sequence[Image.Image]:
+    """Return ``frames`` converted to use the first frame's palette."""
+
+    if not frames:
+        return frames
+
+    base = frames[0].convert("P", palette=Image.ADAPTIVE)
+    palette = base.getpalette()
+    locked = [base]
+    for frame in frames[1:]:
+        palettized = frame.convert("P")
+        palettized.putpalette(palette)
+        locked.append(palettized)
+    return locked
+
+
+def save_gif(
+    frames: Sequence[Image.Image],
+    *,
+    duration_ms: int = 120,
+    loop: int = 0,
+    lock_palette: bool = False,
+) -> str:
     """Save ``frames`` as an animated GIF in the configured outputs directory."""
 
-    base_w, base_h, normalized = _normalize_frames(frames)
+    _, _, normalized = _normalize_frames(frames)
+    if lock_palette:
+        normalized = _lock_palette(normalized)
     path = _unique_path("gif")
     normalized[0].save(
         path,
