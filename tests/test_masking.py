@@ -13,3 +13,4 @@ def test_make_alpha_tolerance():
     img.putpixel((1, 1), (0, 250, 0))  # close to bg
     out = make_alpha(img, (0, 255, 0), tol=10)
     assert out.getpixel((1, 1))[3] == 0  # transparent pixel
+
