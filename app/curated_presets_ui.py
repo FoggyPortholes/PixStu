@@ -10,11 +10,28 @@ from typing import Dict, Optional, Tuple
 import gradio as gr
 import torch
 from diffusers import StableDiffusionXLImg2ImgPipeline, StableDiffusionXLPipeline
+from PIL import Image
 
 try:
     from .gif_creator import make_gif_from_sprite
+    from .gif_tools import save_gif
+    from .masking import (
+        estimate_bg_color,
+        make_alpha,
+        mask_gif,
+        mask_video_to_outputs,
+        save_png_sequence,
+    )
 except ImportError:  # pragma: no cover - direct script execution fallback
     from gif_creator import make_gif_from_sprite
+    from gif_tools import save_gif
+    from masking import (
+        estimate_bg_color,
+        make_alpha,
+        mask_gif,
+        mask_video_to_outputs,
+        save_png_sequence,
+    )
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
@@ -320,6 +337,107 @@ def build_ui():
                     export_sheet,
                 ],
                 outputs=[gif_output, sheet_output, status],
+            )
+
+        with gr.Accordion("Auto Mask", open=False):
+            gr.Markdown("#### Automatic GIF/Video Masking — remove background to transparent")
+            with gr.Row():
+                src_type = gr.Radio(
+                    ["Sprite/GIF", "Video"],
+                    value="Sprite/GIF",
+                    label="Source Type",
+                    info="Choose the type of file to mask.",
+                )
+                tol = gr.Slider(
+                    0,
+                    100,
+                    value=20,
+                    step=1,
+                    label="Tolerance",
+                    info="Higher removes more near-background pixels.",
+                )
+                size = gr.Slider(
+                    16,
+                    512,
+                    value=64,
+                    step=16,
+                    label="Target Size (square)",
+                    info="Resize with nearest-neighbor for pixel crispness.",
+                )
+            with gr.Row():
+                file_in = gr.File(
+                    label="Upload Sprite/GIF/Video",
+                    file_types=[".png", ".webp", ".gif", ".mp4", ".mov", ".webm"],
+                )
+                do_png = gr.Checkbox(
+                    value=True,
+                    label="Export PNG Sequence",
+                    info="Saves masked frames as PNGs.",
+                )
+                do_gif = gr.Checkbox(
+                    value=True,
+                    label="Export GIF",
+                    info="Outputs a transparent GIF.",
+                )
+            with gr.Row():
+                run_mask = gr.Button("Run Auto Mask")
+            with gr.Row():
+                masked_gif = gr.File(label="Masked GIF Output")
+                png_seq_dir = gr.Textbox(label="PNG Sequence Folder")
+                mask_status = gr.Textbox(label="Status")
+
+            def _run_mask(src_type, tol, size, file_in, do_png, do_gif):
+                if file_in is None:
+                    return None, "", "Please upload a file."
+
+                path = getattr(file_in, "name", None) or getattr(file_in, "path", None)
+                if not path:
+                    return None, "", "Unable to read uploaded file path."
+
+                try:
+                    tolerance = int(tol)
+                    target = int(size)
+                except Exception:
+                    tolerance = 20
+                    target = 64
+
+                try:
+                    if src_type == "Sprite/GIF" and path.lower().endswith(".gif"):
+                        gif_path, png_dir = mask_gif(
+                            path,
+                            tolerance=tolerance,
+                            lock_palette=bool(do_gif),
+                            export_png_seq=bool(do_png),
+                        )
+                        status_msg = "Masked GIF generated."
+                    elif src_type == "Sprite/GIF":
+                        image = Image.open(path)
+                        image = image.convert("RGBA")
+                        image = image.resize((target, target), Image.NEAREST)
+                        bg = estimate_bg_color(image)
+                        masked = make_alpha(image, bg, tolerance)
+                        gif_path = None
+                        if do_gif:
+                            gif_path = save_gif([masked], duration_ms=120, loop=0, lock_palette=True)
+                        png_dir = save_png_sequence([masked]) if do_png else None
+                        status_msg = "Masked sprite processed."
+                    else:
+                        gif_path, png_dir = mask_video_to_outputs(
+                            path,
+                            tolerance=tolerance,
+                            target_size=(target, target),
+                            export_gif=bool(do_gif),
+                            export_png_seq=bool(do_png),
+                        )
+                        status_msg = "Masked video processed."
+                    return gif_path, png_dir or "", status_msg
+                except Exception as exc:  # pragma: no cover - surfaced to UI
+                    return None, "", f"Error: {exc}"
+
+            run_mask.click(
+                _run_mask,
+                inputs=[src_type, tol, size, file_in, do_png, do_gif],
+                outputs=[masked_gif, png_seq_dir, mask_status],
             )
     return demo
 
