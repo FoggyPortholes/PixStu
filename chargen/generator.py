@@ -30,16 +30,20 @@ class CharacterGenerator:
             if record is None and entry.get("name"):
                 record = model_setup.find_record(entry["name"])
             if record and not record.exists and entry.get("repo_id"):
-                print(
-                    f"[INFO] Downloading LoRA '{record.name}' for preset '{self.preset.get('name', 'Unnamed')}'."
+                logger.info(
+                    "Downloading LoRA '%s' for preset '%s'.",
+                    record.name,
+                    self.preset.get("name", "Unnamed"),
                 )
-                print(f"[INFO] {model_setup.download(record.name)}")
+                logger.info(model_setup.download(record.name))
                 record = model_setup.resolve_path(record.path) or record
             elif record is None and entry.get("repo_id") and entry.get("name"):
-                print(
-                    f"[INFO] Attempting to download LoRA '{entry['name']}' for preset '{self.preset.get('name', 'Unnamed')}'."
+                logger.info(
+                    "Attempting to download LoRA '%s' for preset '%s'.",
+                    entry["name"],
+                    self.preset.get("name", "Unnamed"),
                 )
-                print(f"[INFO] {model_setup.download(entry['name'])}")
+                logger.info(model_setup.download(entry["name"]))
                 record = model_setup.find_record(entry["name"])
             if record is None:
                 logger.warning("LoRA entry could not be resolved: %s", entry)
