@@ -11,12 +11,27 @@
     },
     {
       "name": "Pixel Art Character XL",
-      "description": "Clean pixel character rendering tuned for SDXL.",
-      "repo_id": "CrucibleAI/Pixel-Art-XL-LoRA",
+      "description": "Public SDXL pixel-art LoRA (nerijs).",
+      "repo_id": "nerijs/pixel-art-xl",
       "filename": "pixel-art-xl.safetensors",
       "path": "lora/pixel-art-xl.safetensors",
-      "preview_url": "https://huggingface.co/CrucibleAI/Pixel-Art-XL-LoRA/resolve/main/pixel_art_xl_sample.png",
       "tags": ["sdxl", "pixel art", "character"]
+    },
+    {
+      "name": "Shaded Retro Anime SDXL",
+      "description": "Stylised anime shading LoRA by nDimensional.",
+      "repo_id": "nDimensional/Shaded-Retro-Style-Anime-with-Natural-Language-SDXL-LoRA",
+      "filename": "Shaded-Retro-Anime-000006.safetensors",
+      "path": "lora/Shaded-Retro-Anime-000006.safetensors",
+      "tags": ["sdxl", "anime", "character"]
+    },
+    {
+      "name": "Mini Mecha SDXL",
+      "description": "Mecha-focused SDXL LoRA by Yangdf.",
+      "repo_id": "Yangdf/mini-mecha-sdxl-lora",
+      "filename": "mini-mecha-sdxl-lora.safetensors",
+      "path": "lora/mini-mecha-sdxl-lora.safetensors",
+      "tags": ["sdxl", "mecha", "character"]
     },
     {
       "name": "Anime Companion SDXL",
