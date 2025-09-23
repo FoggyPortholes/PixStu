@@ -1,0 +1,16 @@
+{
+  "controlnets": [
+    {
+      "name": "Canny SDXL",
+      "repo_id": "diffusers/controlnet-canny-sdxl-1.0",
+      "path": "canny",
+      "conditioning": "canny"
+    },
+    {
+      "name": "Depth SDXL",
+      "repo_id": "diffusers/controlnet-depth-sdxl-1.0",
+      "path": "depth",
+      "conditioning": "depth"
+    }
+  ]
+}

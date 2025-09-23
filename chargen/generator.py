@@ -5,7 +5,14 @@ from typing import Callable, Optional
 
 from PIL import Image
 import torch
-from diffusers import StableDiffusionXLPipeline, StableDiffusionXLImg2ImgPipeline
+from diffusers import (
+    StableDiffusionXLPipeline,
+    StableDiffusionXLImg2ImgPipeline,
+    StableDiffusionXLControlNetPipeline,
+    StableDiffusionXLControlNetImg2ImgPipeline,
+    ControlNetModel,
+    StableDiffusionXLInpaintPipeline,
+)
 
 from . import model_setup
 
@@ -17,8 +24,15 @@ class CharacterGenerator:
     def __init__(self, preset: dict):
         self.preset = preset or {}
         self.dtype = torch.float16 if torch.cuda.is_available() else torch.float32
+        if torch.cuda.is_available():
+            self.device = "cuda"
+        elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+            self.device = "mps"
+        else:
+            self.device = "cpu"
         self.txt2img = None
         self.img2img = None
+        self.inpaint = None
 
     def _apply_loras(self, pipe):
         adapters = []
@@ -81,6 +95,8 @@ class CharacterGenerator:
             base = self.preset.get("base_model", "stabilityai/stable-diffusion-xl-base-1.0")
             self.txt2img = StableDiffusionXLPipeline.from_pretrained(base, torch_dtype=self.dtype)
             self._apply_loras(self.txt2img)
+            if hasattr(self.txt2img, "to"):
+                self.txt2img.to(self.device)
         return self.txt2img
 
     def _ensure_img2img(self):
@@ -88,7 +104,90 @@ class CharacterGenerator:
             base = self.preset.get("base_model", "stabilityai/stable-diffusion-xl-base-1.0")
             self.img2img = StableDiffusionXLImg2ImgPipeline.from_pretrained(base, torch_dtype=self.dtype)
             self._apply_loras(self.img2img)
+            if hasattr(self.img2img, "to"):
+                self.img2img.to(self.device)
         return self.img2img
+
+    def _create_pipeline(
+        self,
+        use_img2img: bool,
+        controlnet_config: Optional[dict] = None,
+        ip_adapter_config: Optional[dict] = None,
+    ):
+        base_model = self.preset.get("base_model", "stabilityai/stable-diffusion-xl-base-1.0")
+        pipe = None
+        if controlnet_config:
+            record = controlnet_config.get("record")
+            if record is None:
+                logger.warning("ControlNet configuration missing record; falling back to base pipeline.")
+            else:
+                control_source = getattr(record, "source", None)
+                try:
+                    control_model = ControlNetModel.from_pretrained(control_source, torch_dtype=self.dtype)
+                except Exception as exc:
+                    logger.warning("Failed to load ControlNet '%s': %s", record.name, exc)
+                    control_model = None
+                if control_model is not None:
+                    if use_img2img:
+                        pipe = StableDiffusionXLControlNetImg2ImgPipeline.from_pretrained(
+                            base_model,
+                            controlnet=control_model,
+                            torch_dtype=self.dtype,
+                        )
+                    else:
+                        pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+                            base_model,
+                            controlnet=control_model,
+                            torch_dtype=self.dtype,
+                        )
+        if pipe is None:
+            if use_img2img:
+                pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(base_model, torch_dtype=self.dtype)
+            else:
+                pipe = StableDiffusionXLPipeline.from_pretrained(base_model, torch_dtype=self.dtype)
+
+        if hasattr(pipe, "to"):
+            pipe.to(self.device)
+        self._apply_loras(pipe)
+        extra_kwargs = {}
+        if ip_adapter_config:
+            extra_kwargs.update(self._apply_ip_adapter(pipe, ip_adapter_config))
+        return pipe, extra_kwargs
+
+    def _apply_ip_adapter(self, pipe, config: dict) -> dict:
+        record = config.get("record")
+        if record is None:
+            return {}
+        source = getattr(record, "source", None)
+        kwargs: dict = {}
+        try:
+            load_kwargs = {"subfolder": getattr(record, "subfolder", None)}
+            if getattr(record, "weight_name", None):
+                load_kwargs["weight_name"] = record.weight_name
+            pipe.load_ip_adapter(source, **load_kwargs)
+        except Exception as exc:
+            logger.warning("Failed to load IP-Adapter '%s': %s", getattr(record, "name", "unknown"), exc)
+            return {}
+
+        scale = config.get("scale")
+        if scale is not None and hasattr(pipe, "set_ip_adapter_scale"):
+            try:
+                pipe.set_ip_adapter_scale(float(scale))
+            except Exception as exc:
+                logger.warning("Unable to set IP-Adapter scale: %s", exc)
+        image = config.get("image")
+        if image is not None:
+            kwargs["ip_adapter_image"] = image
+        return kwargs
+
+    def _ensure_inpaint(self):
+        if self.inpaint is None:
+            base = self.preset.get("base_model", "stabilityai/stable-diffusion-xl-base-1.0")
+            self.inpaint = StableDiffusionXLInpaintPipeline.from_pretrained(base, torch_dtype=self.dtype)
+            self._apply_loras(self.inpaint)
+            if hasattr(self.inpaint, "to"):
+                self.inpaint.to(self.device)
+        return self.inpaint
 
     def _make_progress_callbacks(
         self,
@@ -149,11 +248,17 @@ class CharacterGenerator:
         size: int = 512,
         progress_callback: Optional[Callable[[int, int, Image.Image], None]] = None,
         progress_interval: int = 4,
+        controlnet_config: Optional[dict] = None,
+        ip_adapter_config: Optional[dict] = None,
     ) -> str:
         steps = int(steps or self.preset.get("suggested", {}).get("steps", 30))
         guidance = float(guidance or self.preset.get("suggested", {}).get("guidance", 7.0))
         gen = torch.manual_seed(int(seed))
-        pipe = self._ensure_txt2img()
+        if controlnet_config or ip_adapter_config:
+            pipe, extra_kwargs = self._create_pipeline(False, controlnet_config, ip_adapter_config)
+        else:
+            pipe = self._ensure_txt2img()
+            extra_kwargs = {}
         logger.info(
             "Starting txt2img generation | preset=%s seed=%s size=%s steps=%s guidance=%s",
             self.preset.get("name"),
@@ -169,6 +274,10 @@ class CharacterGenerator:
         elif legacy_cb:
             callback_kwargs["callback"] = legacy_cb
             callback_kwargs["callback_steps"] = 1
+        call_kwargs = dict(extra_kwargs)
+        if controlnet_config:
+            call_kwargs["controlnet_conditioning_image"] = controlnet_config.get("image")
+            call_kwargs["controlnet_conditioning_scale"] = controlnet_config.get("scale", 1.0)
         image = pipe(
             prompt=prompt,
             num_inference_steps=steps,
@@ -176,7 +285,9 @@ class CharacterGenerator:
             generator=gen,
             height=size,
             width=size,
+            negative_prompt=negative_prompt,
             **callback_kwargs,
+            **call_kwargs,
         ).images[0]
         model_setup.ensure_directories()
         path = os.path.join(model_setup.OUTPUTS, f"char_{int(time.time())}.png")
@@ -195,12 +306,18 @@ class CharacterGenerator:
         size: int = 512,
         progress_callback: Optional[Callable[[int, int, Image.Image], None]] = None,
         progress_interval: int = 4,
+        controlnet_config: Optional[dict] = None,
+        ip_adapter_config: Optional[dict] = None,
     ) -> str:
         steps = int(steps or self.preset.get("suggested", {}).get("steps", 30))
         guidance = float(guidance or self.preset.get("suggested", {}).get("guidance", 7.0))
         gen = torch.manual_seed(int(seed))
         base = Image.open(ref_image_path).convert("RGBA").resize((size, size), Image.NEAREST)
-        pipe = self._ensure_img2img()
+        if controlnet_config or ip_adapter_config:
+            pipe, extra_kwargs = self._create_pipeline(True, controlnet_config, ip_adapter_config)
+        else:
+            pipe = self._ensure_img2img()
+            extra_kwargs = {}
         logger.info(
             "Starting img2img refinement | preset=%s seed=%s size=%s strength=%s",
             self.preset.get("name"),
@@ -215,6 +332,10 @@ class CharacterGenerator:
         elif legacy_cb:
             callback_kwargs["callback"] = legacy_cb
             callback_kwargs["callback_steps"] = 1
+        call_kwargs = dict(extra_kwargs)
+        if controlnet_config:
+            call_kwargs["controlnet_conditioning_image"] = controlnet_config.get("image")
+            call_kwargs["controlnet_conditioning_scale"] = controlnet_config.get("scale", 1.0)
         out = pipe(
             prompt=prompt,
             image=base,
@@ -222,10 +343,38 @@ class CharacterGenerator:
             guidance_scale=guidance,
             num_inference_steps=steps,
             generator=gen,
+            negative_prompt=negative_prompt,
             **callback_kwargs,
+            **call_kwargs,
         ).images[0]
         model_setup.ensure_directories()
         path = os.path.join(model_setup.OUTPUTS, f"char_refined_{int(time.time())}.png")
         out.save(path)
         logger.info("Refinement complete | path=%s", path)
+        return path
+
+    def inpaint(
+        self,
+        init_image: Image.Image,
+        mask_image: Image.Image,
+        prompt: str,
+        *,
+        strength: float = 0.5,
+        steps: int = 30,
+        guidance: float = 7.0,
+        negative_prompt: Optional[str] = None,
+    ) -> str:
+        pipe = self._ensure_inpaint()
+        result = pipe(
+            prompt=prompt,
+            image=init_image,
+            mask_image=mask_image,
+            strength=strength,
+            num_inference_steps=steps,
+            guidance_scale=guidance,
+            negative_prompt=negative_prompt,
+        ).images[0]
+        path = os.path.join(model_setup.OUTPUTS, f"char_edit_{int(time.time())}.png")
+        result.save(path)
+        logger.info("Inpaint complete | path=%s", path)
         return path

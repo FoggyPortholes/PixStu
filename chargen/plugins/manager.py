@@ -11,12 +11,22 @@ class PluginManager:
     def __init__(self, plugins: Iterable[Plugin]) -> None:
         self.plugins: List[Plugin] = list(plugins)
         self._outputs: List[gr.Component] = []
+        self._inputs: List[gr.Component] = []
+        self._inputs_map: List[tuple[Plugin, List[gr.Component]]] = []
 
     def setup_ui(self, ui_context: UIContext) -> List[gr.Component]:
         outputs: List[gr.Component] = []
+        inputs: List[gr.Component] = []
+        mapping: List[tuple[Plugin, List[gr.Component]]] = []
         for plugin in self.plugins:
             outputs.extend(plugin.setup_ui(ui_context))
+            plugin_inputs = plugin.inputs
+            if plugin_inputs:
+                inputs.extend(plugin_inputs)
+                mapping.append((plugin, plugin_inputs))
         self._outputs = outputs
+        self._inputs = inputs
+        self._inputs_map = mapping
         return outputs
 
     def create_session(
@@ -40,6 +50,14 @@ class PluginManager:
         for plugin in self.plugins:
             updates.extend(plugin.on_generation_start(session))
         return updates
+
+    def prepare_session(self, session: GenerationSession, values: List) -> None:
+        idx = 0
+        for plugin, components in self._inputs_map:
+            count = len(components)
+            plugin_values = values[idx : idx + count]
+            plugin.prepare_session(session, plugin_values)
+            idx += count
 
     def on_preview(self, session: GenerationSession, step: int, total: int, image) -> List[gr.Update]:
         updates: List[gr.Update] = []
@@ -68,6 +86,10 @@ class PluginManager:
     @property
     def outputs(self) -> List[gr.Component]:
         return self._outputs
+
+    @property
+    def inputs(self) -> List[gr.Component]:
+        return self._inputs
 
 
 _plugin_manager: PluginManager | None = None

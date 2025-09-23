@@ -1,0 +1,11 @@
+{
+  "ip_adapters": [
+    {
+      "name": "IP-Adapter SDXL",
+      "repo_id": "TencentARC/IP-Adapter",
+      "path": "ip_adapter_sdxl",
+      "subfolder": "sdxl_models",
+      "weight_name": "ip-adapter_sdxl.safetensors"
+    }
+  ]
+}

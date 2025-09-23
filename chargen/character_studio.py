@@ -36,6 +36,7 @@ def _stream_generation(
     size_val: float,
     ref_path: str,
     ref_strength: float,
+    *plugin_values,
 ) -> Generator:
     manager = get_plugin_manager()
     preset = PRESETS.get(preset_name) or {}
@@ -47,7 +48,10 @@ def _stream_generation(
 
     suggested_steps = int(preset.get("suggested", {}).get("steps", 30))
     progress_interval = max(1, suggested_steps // PREVIEW_INTERVAL)
-    augmented_prompt = _augment_prompt(prompt_txt)
+    augmented_prompt = _augment_prompt(
+        ", ".join(filter(None, [preset.get("style_prompt"), prompt_txt]))
+    )
+    negative_prompt = preset.get("negative_prompt")
 
     if ref_path:
         run_kwargs = dict(
@@ -68,6 +72,8 @@ def _stream_generation(
         ref_strength=float(ref_strength) if ref_path else None,
     )
 
+    manager.prepare_session(session, list(plugin_values))
+
     result_queue: "queue.Queue" = queue.Queue()
     start_updates = manager.on_generation_start(session)
     result_queue.put(("start", start_updates))
@@ -78,11 +84,17 @@ def _stream_generation(
 
     def _worker():
         try:
+            controlnet_config = session.storage.get("controlnet")
+            ip_adapter_config = session.storage.get("ip_adapter")
+
             out_path = run_fn(
                 seed=seed_int,
                 size=int(size_val),
                 progress_callback=_progress,
                 progress_interval=progress_interval,
+                controlnet_config=controlnet_config,
+                ip_adapter_config=ip_adapter_config,
+                negative_prompt=negative_prompt,
                 **run_kwargs,
             )
             metadata = {
@@ -92,6 +104,8 @@ def _stream_generation(
                 "size": int(size_val),
                 "ref": bool(ref_path),
             }
+            if negative_prompt:
+                metadata["negative_prompt"] = negative_prompt
             meta_path = save_metadata(os.path.dirname(out_path), metadata)
 
             try:
@@ -125,7 +139,7 @@ def _stream_generation(
         elif tag == "preview":
             _tag, step_index, total, image, plugin_updates = message
             yield (
-                gr.update(value=image),
+                gr.update(),
                 gr.update(),
                 gr.update(value=f"Rendering… step {step_index + 1}/{total}"),
                 *plugin_updates,
@@ -141,7 +155,7 @@ def _stream_generation(
         elif tag == "error":
             _tag, error_message, plugin_updates = message
             yield (
-                gr.update(),
+                gr.update(value=None),
                 gr.update(value=""),
                 gr.update(value=f"Error: {error_message}"),
                 *plugin_updates,
@@ -250,15 +264,16 @@ def build_ui() -> gr.Blocks:
                                 "meta": meta_box,
                                 "status": status,
                                 "final_image": out_img,
+                                "preset": preset,
                             },
                         )
                     )
 
-                    generate_btn.click(
-                        _stream_generation,
-                        inputs=[prompt, preset, seed, jitter, size, ref, strength],
-                        outputs=[out_img, meta_box, status, *plugin_outputs],
-                    )
+            generate_btn.click(
+                _stream_generation,
+                inputs=[prompt, preset, seed, jitter, size, ref, strength, *plugin_manager.inputs],
+                outputs=[out_img, meta_box, status, *plugin_outputs],
+            )
 
             with gr.TabItem("Reference Gallery"):
                 with gr.Column(elem_classes=["chargen-panel"]):

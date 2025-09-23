@@ -33,17 +33,23 @@ class Plugin:
 
     def __init__(self) -> None:
         self._outputs: List[gr.Component] = []
+        self._inputs: List[gr.Component] = []
+        self._status: str | None = None
 
     # -- UI -----------------------------------------------------------------
     def setup_ui(self, ui: UIContext) -> List[gr.Component]:
         """Create plugin UI inside the provided container and return outputs."""
 
         self._outputs = []
+        self._inputs = []
         return self._outputs
 
     # -- Helpers -------------------------------------------------------------
     def _blank(self) -> List[gr.Update]:
         return [gr.update()] * len(self._outputs)
+
+    def register_input(self, component: gr.Component) -> None:
+        self._inputs.append(component)
 
     # -- Generation lifecycle hooks ----------------------------------------
     def on_generation_start(self, session: GenerationSession) -> List[gr.Update]:
@@ -65,7 +71,15 @@ class Plugin:
     def on_error(self, session: GenerationSession, message: str) -> List[gr.Update]:
         return self._blank()
 
+    def prepare_session(self, session: GenerationSession, values: List) -> None:
+        """Capture UI state ahead of a generation run."""
+        session.storage[self.__class__.__name__] = values
+
     # ----------------------------------------------------------------------
     @property
     def outputs(self) -> List[gr.Component]:
         return self._outputs
+
+    @property
+    def inputs(self) -> List[gr.Component]:
+        return self._inputs

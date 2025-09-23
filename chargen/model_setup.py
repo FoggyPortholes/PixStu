@@ -19,6 +19,9 @@ CONTROLNET_DIR = os.path.join(MODELS, "controlnet")
 IP_ADAPTER_DIR = os.path.join(MODELS, "ip_adapter")
 LOGS = os.path.join(ROOT, "logs")
 
+CONTROLNET_CATALOG_FILE = os.path.join(CONFIGS, "controlnet_catalog.json")
+IP_ADAPTER_CATALOG_FILE = os.path.join(CONFIGS, "ip_adapter_catalog.json")
+
 CATALOG_FILE = os.path.join(CONFIGS, "lora_catalog.json")
 SUPPORTED_EXTS = (".safetensors", ".ckpt", ".bin", ".pt")
 
@@ -56,6 +59,39 @@ class LoraRecord:
             "description": self.description,
         }
 
+
+@dataclass
+class ControlNetRecord:
+    name: str
+    repo_id: str
+    local_dir: str
+    conditioning: str = "generic"
+    subfolder: Optional[str] = None
+
+    @property
+    def exists(self) -> bool:
+        return os.path.isdir(self.local_dir)
+
+    @property
+    def source(self) -> str:
+        return self.local_dir if self.exists else self.repo_id
+
+
+@dataclass
+class IPAdapterRecord:
+    name: str
+    repo_id: str
+    local_dir: str
+    subfolder: Optional[str] = None
+    weight_name: Optional[str] = None
+
+    @property
+    def exists(self) -> bool:
+        return os.path.isdir(self.local_dir)
+
+    @property
+    def source(self) -> str:
+        return self.local_dir if self.exists else self.repo_id
 
 def _default_catalog() -> Dict[str, List[dict]]:
     return {
@@ -102,6 +138,67 @@ def _load_catalog_blob() -> Dict[str, List[dict]]:
         data = {}
     if "loras" not in data:
         data = _default_catalog()
+    return data
+
+
+def _default_controlnet_catalog() -> Dict[str, List[dict]]:
+    return {
+        "controlnets": [
+            {
+                "name": "Canny SDXL",
+                "repo_id": "diffusers/controlnet-canny-sdxl-1.0",
+                "path": "canny",
+                "conditioning": "canny",
+            },
+            {
+                "name": "Depth SDXL",
+                "repo_id": "diffusers/controlnet-depth-sdxl-1.0",
+                "path": "depth",
+                "conditioning": "depth",
+            },
+        ]
+    }
+
+
+def _default_ip_adapter_catalog() -> Dict[str, List[dict]]:
+    return {
+        "ip_adapters": [
+            {
+                "name": "IP-Adapter SDXL",
+                "repo_id": "TencentARC/IP-Adapter",
+                "path": "ip_adapter_sdxl",
+                "subfolder": "sdxl_models",
+                "weight_name": "ip-adapter_sdxl.safetensors",
+            }
+        ]
+    }
+
+
+def _load_controlnet_catalog() -> Dict[str, List[dict]]:
+    if os.path.isfile(CONTROLNET_CATALOG_FILE):
+        with open(CONTROLNET_CATALOG_FILE, "r", encoding="utf-8") as handle:
+            try:
+                data = json.load(handle)
+            except json.JSONDecodeError:
+                data = {}
+    else:
+        data = {}
+    if "controlnets" not in data:
+        data = _default_controlnet_catalog()
+    return data
+
+
+def _load_ip_adapter_catalog() -> Dict[str, List[dict]]:
+    if os.path.isfile(IP_ADAPTER_CATALOG_FILE):
+        with open(IP_ADAPTER_CATALOG_FILE, "r", encoding="utf-8") as handle:
+            try:
+                data = json.load(handle)
+            except json.JSONDecodeError:
+                data = {}
+    else:
+        data = {}
+    if "ip_adapters" not in data:
+        data = _default_ip_adapter_catalog()
     return data
 
 
@@ -173,6 +270,89 @@ def records_by_name() -> Dict[str, LoraRecord]:
 
 def find_record(name: str) -> Optional[LoraRecord]:
     return records_by_name().get(name)
+
+
+def list_controlnets() -> List[ControlNetRecord]:
+    blob = _load_controlnet_catalog()
+    records: List[ControlNetRecord] = []
+    for entry in blob.get("controlnets", []):
+        repo_id = entry.get("repo_id")
+        if not repo_id:
+            continue
+        path_suffix = entry.get("path") or repo_id.split("/")[-1]
+        local_dir = os.path.join(CONTROLNET_DIR, path_suffix)
+        records.append(
+            ControlNetRecord(
+                name=entry.get("name", repo_id),
+                repo_id=repo_id,
+                local_dir=local_dir,
+                conditioning=entry.get("conditioning", "generic"),
+                subfolder=entry.get("subfolder"),
+            )
+        )
+
+    # include additional local directories
+    if os.path.isdir(CONTROLNET_DIR):
+        for item in os.listdir(CONTROLNET_DIR):
+            path = os.path.join(CONTROLNET_DIR, item)
+            if os.path.isdir(path) and not any(record.local_dir == path for record in records):
+                records.append(
+                    ControlNetRecord(
+                        name=item,
+                        repo_id=item,
+                        local_dir=path,
+                    )
+                )
+    return records
+
+
+def controlnet_records_by_name() -> Dict[str, ControlNetRecord]:
+    return {record.name: record for record in list_controlnets()}
+
+
+def find_controlnet(name: str) -> Optional[ControlNetRecord]:
+    return controlnet_records_by_name().get(name)
+
+
+def list_ip_adapters() -> List[IPAdapterRecord]:
+    blob = _load_ip_adapter_catalog()
+    records: List[IPAdapterRecord] = []
+    for entry in blob.get("ip_adapters", []):
+        repo_id = entry.get("repo_id")
+        if not repo_id:
+            continue
+        path_suffix = entry.get("path") or repo_id.split("/")[-1]
+        local_dir = os.path.join(IP_ADAPTER_DIR, path_suffix)
+        records.append(
+            IPAdapterRecord(
+                name=entry.get("name", repo_id),
+                repo_id=repo_id,
+                local_dir=local_dir,
+                subfolder=entry.get("subfolder"),
+                weight_name=entry.get("weight_name"),
+            )
+        )
+
+    if os.path.isdir(IP_ADAPTER_DIR):
+        for item in os.listdir(IP_ADAPTER_DIR):
+            path = os.path.join(IP_ADAPTER_DIR, item)
+            if os.path.isdir(path) and not any(record.local_dir == path for record in records):
+                records.append(
+                    IPAdapterRecord(
+                        name=item,
+                        repo_id=item,
+                        local_dir=path,
+                    )
+                )
+    return records
+
+
+def ip_adapter_records_by_name() -> Dict[str, IPAdapterRecord]:
+    return {record.name: record for record in list_ip_adapters()}
+
+
+def find_ip_adapter(name: str) -> Optional[IPAdapterRecord]:
+    return ip_adapter_records_by_name().get(name)
 
 
 def find_by_filename(filename: str) -> Optional[LoraRecord]:

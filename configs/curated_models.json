@@ -3,12 +3,16 @@
     {
       "name": "SDXL-Character-Base",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "studio-lit character render, sharp line art, balanced colors",
+      "negative_prompt": "lowres, blurry, watermark, text, cropped, extra limbs, worst quality",
       "loras": [],
       "suggested": { "steps": 30, "guidance": 7.0 }
     },
     {
       "name": "SDXL-Illustrated-Hero",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "dramatic comic book illustration, bold inks, cinematic lighting",
+      "negative_prompt": "washed out colors, messy anatomy, text, watermark, low contrast",
       "loras": [
         {
           "name": "Pixel Art Character XL",
@@ -21,6 +25,8 @@
     {
       "name": "SDXL-Anime-Companion",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "vibrant anime key art, clean cel shading, expressive pose",
+      "negative_prompt": "low detail, dull colors, watermark, signature, double face",
       "loras": [
         {
           "name": "Shaded Retro Anime SDXL",
@@ -33,6 +39,8 @@
     {
       "name": "SDXL-Stylized-Mech",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "detailed mecha render, crisp plating, dramatic rim light",
+      "negative_prompt": "rubber surfaces, blurred joints, watermark, disjointed limbs",
       "loras": [
         {
           "name": "Mini Mecha SDXL",
