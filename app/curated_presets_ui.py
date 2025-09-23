@@ -16,6 +16,11 @@ try:
 except ImportError:  # pragma: no cover - direct script execution fallback
     from gif_creator import make_gif_from_sprite
 
+try:
+    from .masking import mask_gif, mask_video_to_outputs
+except ImportError:  # pragma: no cover - direct script execution fallback
+    from masking import mask_gif, mask_video_to_outputs
+
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
 
@@ -320,6 +325,111 @@ def build_ui():
                     export_sheet,
                 ],
                 outputs=[gif_output, sheet_output, status],
+            )
+
+        with gr.Accordion("Auto Mask", open=False):
+            gr.Markdown("#### Automatic GIF/Video Masking — remove background to transparent")
+            with gr.Row():
+                src_type = gr.Radio(
+                    ["Sprite/GIF", "Video"],
+                    value="Sprite/GIF",
+                    label="Source Type",
+                    info="Choose the type of file to mask.",
+                )
+                tol = gr.Slider(
+                    0,
+                    100,
+                    value=20,
+                    step=1,
+                    label="Tolerance",
+                    info="Higher removes more near-background pixels.",
+                )
+                size = gr.Slider(
+                    16,
+                    512,
+                    value=64,
+                    step=16,
+                    label="Target Size (square)",
+                    info="Resize with nearest-neighbor for pixel crispness.",
+                )
+            with gr.Row():
+                file_in = gr.File(
+                    label="Upload Sprite/GIF/Video",
+                    file_types=[".png", ".webp", ".gif", ".mp4", ".mov", ".webm"],
+                )
+                do_png = gr.Checkbox(
+                    value=True,
+                    label="Export PNG Sequence",
+                    info="Saves masked frames as PNGs.",
+                )
+                do_gif = gr.Checkbox(
+                    value=True,
+                    label="Export GIF",
+                    info="Outputs a transparent GIF.",
+                )
+            with gr.Row():
+                run_mask = gr.Button("Run Auto Mask")
+            with gr.Row():
+                masked_gif = gr.File(label="Masked GIF Output")
+                png_seq_dir = gr.Textbox(label="PNG Sequence Folder")
+                mask_status = gr.Textbox(label="Status")
+
+            def _run_mask(src_type, tol, size, file_in, do_png, do_gif):
+                if file_in is None:
+                    return None, "", "Please upload a file."
+                path = file_in.name
+                try:
+                    if src_type == "Sprite/GIF" and path.lower().endswith(".gif"):
+                        gif_path = mask_gif(path, tolerance=int(tol), lock_palette=True) if do_gif else None
+                        png_dir = None
+                        return gif_path, png_dir or "", "Masked GIF generated."
+                    elif src_type == "Sprite/GIF":
+                        from PIL import Image
+
+                        try:
+                            from .masking import estimate_bg_color, make_alpha
+                        except ImportError:  # pragma: no cover - direct script execution fallback
+                            from masking import estimate_bg_color, make_alpha
+
+                        im = Image.open(path)
+                        im = im.resize((int(size), int(size)), Image.NEAREST)
+                        bg = estimate_bg_color(im)
+                        rgba = make_alpha(im, bg, tol=int(tol))
+
+                        try:
+                            from .gif_tools import save_gif
+                        except ImportError:  # pragma: no cover - direct script execution fallback
+                            from gif_tools import save_gif
+
+                        gif_path = (
+                            save_gif([rgba], duration_ms=120, loop=0, lock_palette=True) if do_gif else None
+                        )
+                        png_dir = None
+                        if do_png:
+                            import os
+                            import time
+
+                            ts = int(time.time())
+                            png_dir = os.path.join(os.path.dirname(gif_path or path), f"masked_seq_{ts}")
+                            os.makedirs(png_dir, exist_ok=True)
+                            rgba.save(os.path.join(png_dir, "frame_0000.png"))
+                        return gif_path, png_dir or "", "Masked sprite processed."
+                    else:
+                        gif_path, png_dir = mask_video_to_outputs(
+                            path,
+                            tolerance=int(tol),
+                            target_size=(int(size), int(size)),
+                            export_gif=bool(do_gif),
+                            export_png_seq=bool(do_png),
+                        )
+                        return gif_path, png_dir or "", "Masked video processed."
+                except Exception as e:  # pragma: no cover - surfaced to UI
+                    return None, "", f"Error: {e}"
+
+            run_mask.click(
+                _run_mask,
+                inputs=[src_type, tol, size, file_in, do_png, do_gif],
+                outputs=[masked_gif, png_seq_dir, mask_status],
             )
     return demo
 
