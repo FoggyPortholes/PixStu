@@ -9,12 +9,20 @@ from typing import Iterable, List, Sequence, Tuple
 
 from PIL import Image, ImageSequence
 
+try:
+    import rembg  # type: ignore[import]
+
+    _HAS_REMBG = True
+except Exception:  # pragma: no cover - optional dependency
+    _HAS_REMBG = False
+
 __all__ = [
     "OUTPUTS_DIR",
     "apply_palette",
     "estimate_bg_color",
     "extract_palette",
     "make_alpha",
+    "smart_alpha",
     "mask_gif",
     "mask_video_to_outputs",
     "nn_resize",
@@ -107,6 +115,22 @@ def make_alpha(img: Image.Image, bg: Tuple[int, int, int], tol: int = 20) -> Ima
     return rgba
 
 
+def smart_alpha(
+    img: Image.Image,
+    tolerance: int = 20,
+    bg: Tuple[int, int, int] | None = None,
+) -> Image.Image:
+    """Return an alpha-masked image using ``rembg`` when available."""
+
+    if _HAS_REMBG:
+        return rembg.remove(img.convert("RGBA"))
+
+    if bg is None:
+        bg = estimate_bg_color(img)
+
+    return make_alpha(img, bg, tol=int(tolerance))
+
+
 def _ensure_rgba_frames(frames: Iterable[Image.Image]) -> List[Image.Image]:
     return [to_rgba(frame) for frame in frames]
 
@@ -188,7 +212,9 @@ def mask_gif(input_path: str, tolerance: int = 20, lock_palette: bool = True) ->
         bg_colour = estimate_bg_color(base_rgb)
         frames: List[Image.Image] = []
         for frame in ImageSequence.Iterator(payload):
-            rgba = make_alpha(frame.convert("RGBA"), bg_colour, tol=int(tolerance))
+            rgba = smart_alpha(
+                frame.convert("RGBA"), tolerance=int(tolerance), bg=bg_colour
+            )
             frames.append(rgba)
 
         duration = payload.info.get("duration", 90)
@@ -224,7 +250,7 @@ def mask_video_to_outputs(
         if bg_colour is None:
             raise ValueError("Unable to determine background colour")
 
-        frames.append(make_alpha(image, bg_colour, tol=int(tolerance)))
+        frames.append(smart_alpha(image, tolerance=int(tolerance), bg=bg_colour))
 
     if not frames:
         raise ValueError("No frames extracted from video")
