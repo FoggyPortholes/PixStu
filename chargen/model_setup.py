@@ -17,13 +17,14 @@ MODELS = os.path.join(ROOT, "models")
 LORAS = os.path.join(MODELS, "lora")
 CONTROLNET_DIR = os.path.join(MODELS, "controlnet")
 IP_ADAPTER_DIR = os.path.join(MODELS, "ip_adapter")
+LOGS = os.path.join(ROOT, "logs")
 
 CATALOG_FILE = os.path.join(CONFIGS, "lora_catalog.json")
 SUPPORTED_EXTS = (".safetensors", ".ckpt", ".bin", ".pt")
 
 
 def ensure_directories() -> None:
-    for path in [OUTPUTS, GALLERY, LORAS, CONTROLNET_DIR, IP_ADAPTER_DIR]:
+    for path in [OUTPUTS, GALLERY, LORAS, CONTROLNET_DIR, IP_ADAPTER_DIR, LOGS]:
         os.makedirs(path, exist_ok=True)
 
 

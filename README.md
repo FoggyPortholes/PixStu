@@ -22,6 +22,14 @@ python -m chargen.setup_all --install-torch
 
 By default the helper detects your hardware. Override with `--device cuda|rocm|mps|cpu` if needed. Apple Silicon users should export `PYTORCH_ENABLE_MPS_FALLBACK=1` to gracefully fall back on CPU for missing kernels.
 
+Each generation writes a metadata JSON beside the output. Use the in-app rating control to assign a 1–5 score; ratings are saved into the metadata. Aggregate quality across presets with:
+
+```bash
+python tools/aggregate_ratings.py
+```
+
+Need to troubleshoot a render? Toggle **Show Diagnostics** in the Character Studio tab to reveal the live log tail and the absolute path to `logs/chargen.log`.
+
 The Character Studio exposes prompt input, preset selection, seed controls, reference uploads, and a built-in gallery sourced from `reference_gallery/`. Outputs (PNG, sprite sheets, metadata) are saved under `outputs/` at runtime.
 
 Sprite sheet packaging can be launched separately:
