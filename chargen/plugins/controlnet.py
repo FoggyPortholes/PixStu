@@ -31,21 +31,20 @@ class ControlNetPlugin(Plugin):
                     options,
                     value=default,
                     label="ControlNet Model",
-                info="Choose which ControlNet to apply.",
-            )
-            self.scale_slider = gr.Slider(
-                minimum=0.1,
-                maximum=2.0,
-                value=1.0,
-                step=0.05,
-                label="Control Weight",
-                info="Scale applied to the ControlNet conditioning.",
-            )
-            self.image_input = gr.Image(
-                label="Control Conditioning Image",
-                type="filepath",
-                info="Upload a preprocessed map (e.g., canny edges, depth).",
-            )
+                    info="Choose which ControlNet to apply.",
+                )
+                self.scale_slider = gr.Slider(
+                    minimum=0.1,
+                    maximum=2.0,
+                    value=1.0,
+                    step=0.05,
+                    label="Control Weight",
+                    info="Scale applied to the ControlNet conditioning.",
+                )
+                self.image_input = gr.Image(
+                    label="Control Conditioning Image",
+                    type="filepath",
+                )
                 self.status_box = gr.Textbox(label="ControlNet Status", interactive=False)
 
         if self.enable:

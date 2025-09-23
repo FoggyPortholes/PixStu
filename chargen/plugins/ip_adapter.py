@@ -31,21 +31,20 @@ class IPAdapterPlugin(Plugin):
                     options,
                     value=default,
                     label="IP-Adapter Weights",
-                info="Select the adapter weights to load.",
-            )
-            self.scale_slider = gr.Slider(
-                minimum=0.0,
-                maximum=1.0,
-                value=0.6,
-                step=0.05,
-                label="Adapter Scale",
-                info="Blend IP-Adapter features with the base prompt.",
-            )
-            self.image_input = gr.Image(
-                label="Adapter Reference Image",
-                type="filepath",
-                info="Upload a reference image used by IP-Adapter.",
-            )
+                    info="Select the adapter weights to load.",
+                )
+                self.scale_slider = gr.Slider(
+                    minimum=0.0,
+                    maximum=1.0,
+                    value=0.6,
+                    step=0.05,
+                    label="Adapter Scale",
+                    info="Blend IP-Adapter features with the base prompt.",
+                )
+                self.image_input = gr.Image(
+                    label="Adapter Reference Image",
+                    type="filepath",
+                )
                 self.status_box = gr.Textbox(label="IP-Adapter Status", interactive=False)
 
         if self.enable:

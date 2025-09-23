@@ -245,6 +245,7 @@ class CharacterGenerator:
         seed: int = 42,
         steps: Optional[int] = None,
         guidance: Optional[float] = None,
+        negative_prompt: Optional[str] = None,
         size: int = 512,
         progress_callback: Optional[Callable[[int, int, Image.Image], None]] = None,
         progress_interval: int = 4,
@@ -275,6 +276,8 @@ class CharacterGenerator:
             callback_kwargs["callback"] = legacy_cb
             callback_kwargs["callback_steps"] = 1
         call_kwargs = dict(extra_kwargs)
+        if negative_prompt is not None:
+            call_kwargs["negative_prompt"] = negative_prompt
         if controlnet_config:
             call_kwargs["controlnet_conditioning_image"] = controlnet_config.get("image")
             call_kwargs["controlnet_conditioning_scale"] = controlnet_config.get("scale", 1.0)
@@ -285,7 +288,6 @@ class CharacterGenerator:
             generator=gen,
             height=size,
             width=size,
-            negative_prompt=negative_prompt,
             **callback_kwargs,
             **call_kwargs,
         ).images[0]
@@ -303,6 +305,7 @@ class CharacterGenerator:
         seed: int = 42,
         steps: Optional[int] = None,
         guidance: Optional[float] = None,
+        negative_prompt: Optional[str] = None,
         size: int = 512,
         progress_callback: Optional[Callable[[int, int, Image.Image], None]] = None,
         progress_interval: int = 4,
@@ -333,6 +336,8 @@ class CharacterGenerator:
             callback_kwargs["callback"] = legacy_cb
             callback_kwargs["callback_steps"] = 1
         call_kwargs = dict(extra_kwargs)
+        if negative_prompt is not None:
+            call_kwargs["negative_prompt"] = negative_prompt
         if controlnet_config:
             call_kwargs["controlnet_conditioning_image"] = controlnet_config.get("image")
             call_kwargs["controlnet_conditioning_scale"] = controlnet_config.get("scale", 1.0)
@@ -343,7 +348,6 @@ class CharacterGenerator:
             guidance_scale=guidance,
             num_inference_steps=steps,
             generator=gen,
-            negative_prompt=negative_prompt,
             **callback_kwargs,
             **call_kwargs,
         ).images[0]
