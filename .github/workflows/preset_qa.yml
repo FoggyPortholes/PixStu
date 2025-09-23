@@ -1,0 +1,28 @@
+name: Preset QA
+on:
+  pull_request:
+    paths:
+      - 'configs/curated_models.json'
+      - 'chargen/**.py'
+      - 'tools/**.py'
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-linux.txt
+      - run: python tools/test_presets.py
+      - run: python tools/aggregate_ratings.py > qa_raw.txt || true
+      - run: python tools/sanitize_reports.py qa_raw.txt qa_report.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preset-qa-artifacts
+          path: |
+            docs/preset_samples
+            qa_report.txt
+          if-no-files-found: warn

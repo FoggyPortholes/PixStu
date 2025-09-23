@@ -10,7 +10,7 @@ import gradio as gr
 from PIL import Image
 
 from . import model_setup, ui_guard, ui_theme
-from .generator import CharacterGenerator
+from .bulletproof import BulletProofGenerator
 from .metadata import save_metadata
 from .plugins.base import UIContext
 from .plugins.manager import get_plugin_manager
@@ -40,7 +40,7 @@ def _stream_generation(
 ) -> Generator:
     manager = get_plugin_manager()
     preset = PRESETS.get(preset_name) or {}
-    generator = CharacterGenerator(preset)
+    generator = BulletProofGenerator(preset)
 
     seed_int = int(seed_val)
     if jitter_val:

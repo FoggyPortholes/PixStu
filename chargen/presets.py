@@ -85,3 +85,13 @@ class Presets:
         else:
             lines.append("**LoRAs:** none")
         return "\n".join(lines)
+
+
+_DEFAULT_PRESETS: Presets | None = None
+
+
+def get_preset_names() -> List[str]:
+    global _DEFAULT_PRESETS
+    if _DEFAULT_PRESETS is None:
+        _DEFAULT_PRESETS = Presets()
+    return _DEFAULT_PRESETS.names()

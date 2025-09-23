@@ -9,12 +9,27 @@ from .logging_config import configure_logging
 def build_app() -> gr.Blocks:
     configure_logging()
     demo = build_ui()
+    print('[SELFTEST] Starting quick checks…')
     try:
-        from .ui_guard import check_ui  # lazy import to avoid optional dependency issues
+        from .presets import get_preset_names
 
-        for message in check_ui(demo):
-            print(message)
-    except Exception as exc:  # pragma: no cover - defensive logging only
-        print("[UI] Drift check skipped:", exc)
+        names = get_preset_names()
+        assert names, 'No presets found'
+        print('[SELFTEST] Presets:', len(names))
+    except Exception as exc:
+        print('[SELFTEST] Preset load error:', exc)
+
+    try:
+        from .ui_guard import check_ui
+
+        issues = check_ui(demo)
+        if issues:
+            print('[SELFTEST] UI drift found:')
+            for issue in issues:
+                print(' -', issue)
+        else:
+            print('[SELFTEST] UI OK')
+    except Exception as exc:
+        print('[SELFTEST] UI check skipped:', exc)
     demo.share = False
     return demo
