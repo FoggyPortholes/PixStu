@@ -247,6 +247,7 @@ with gr.Blocks(analytics_enabled=False) as demo:
             meta = gr.Code(label="Meta", language="json")
         with gr.Tab("Timeline Preview"):
             gr.Markdown("#### Scrub through frames with onion-skinning and FPS control")
+            refresh_btn = gr.Button("Refresh Preview", variant="secondary")
             with gr.Row():
                 timeline_html = gr.HTML("""
                 <div id='px-timeline' style='display:flex;gap:12px;align-items:center'>
@@ -297,6 +298,7 @@ with gr.Blocks(analytics_enabled=False) as demo:
                 })();
                 </script>
                 """)
+            refresh_btn.click(fn=None, inputs=None, outputs=None, _js="() => { location.reload(); }")
     status = gr.Textbox(label="Status")
 
     def _on_gen(prompt,negative,steps,cfg,width,height,quality,pixel_scale,palette,dither,crisp,sharpen,base_model,lcm_dir,lora_files,lw_json):
