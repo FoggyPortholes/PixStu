@@ -1,5 +1,5 @@
-﻿import os, sys, json, glob, uuid, datetime, contextlib
-from typing import List, Optional
+import os, json, glob, uuid, datetime, contextlib
+
 import gradio as gr
 
 # ``gradio_client`` currently assumes that every JSON schema object is a
@@ -23,33 +23,17 @@ else:
     _grc_utils._json_schema_to_python_type = _pcs_json_schema_to_python_type
 import torch
 from PIL import Image, ImageColor, ImageFilter
-from diffusers import DiffusionPipeline, LCMScheduler, DPMSolverMultistepScheduler
+
+from . import pipeline_cache
 
 ROOT = os.path.abspath(os.path.dirname(__file__))
 PROJ = os.path.abspath(os.path.join(ROOT, ".."))
-EXE_DIR = (os.path.dirname(sys.executable) if getattr(sys, "frozen", False) else PROJ)
-MODELS_ROOT = os.getenv("PCS_MODELS_ROOT", os.path.join(EXE_DIR, "models"))
+MODELS_ROOT = pipeline_cache.MODELS_ROOT
+_abs_under_models = pipeline_cache.resolve_under_models
 
-def _abs_under_models(p):
-    if not p: return p
-    expanded = os.path.expanduser(str(p))
-    if os.path.isabs(expanded): return os.path.normpath(expanded)
-    normalized = os.path.normpath(expanded)
-    project_candidate = os.path.abspath(os.path.join(PROJ, normalized))
-    if os.path.exists(project_candidate):
-        return os.path.normpath(project_candidate)
-    parts = normalized.split(os.sep)
-    if parts and parts[0] == "models":
-        normalized = os.path.join(*parts[1:]) if len(parts) > 1 else ""
-    return os.path.normpath(os.path.abspath(os.path.join(MODELS_ROOT, normalized)))
-
-def _device():
-    if torch.cuda.is_available(): return "cuda", torch.float16, "cuda"
-    if getattr(torch.backends,"mps",None) and torch.backends.mps.is_available(): return "mps", torch.float16, "mps"
-    return "cpu", torch.float32, "cpu"
-
-_DEV_KIND, _DTYPE, _DEVICE = _device()
-_PIPE = None; _CUR_BASE = None; _ACTIVE_ADAPTERS = []
+_DEV_KIND = pipeline_cache.DEV_KIND
+_DTYPE = pipeline_cache.DTYPE
+_DEVICE = pipeline_cache.DEVICE
 
 PALETTES = {
   "None": [],
@@ -81,73 +65,20 @@ def load_curated():
             return (json.load(f).get("presets") or [])
     except: return []
 
-DEFAULT_MODEL_ID = "stabilityai/stable-diffusion-xl-base-1.0"
+DEFAULT_MODEL_ID = pipeline_cache.DEFAULT_MODEL_ID
+
 
 def load_base(model_id, quality, local_dir=None):
-    global _PIPE, _CUR_BASE
-
-    # Resolve the requested model id.
-    mid = model_id or DEFAULT_MODEL_ID
-    # Allow callers to explicitly provide a local directory that should take
-    # precedence over the identifier.
-    if local_dir:
-        candidate = _abs_under_models(local_dir)
-        if os.path.isdir(candidate):
-            mid = candidate
-    # If the identifier maps to a folder inside the models directory make sure
-    # we pass the absolute path to the pipeline loader.  This allows users to
-    # select entries from the UI returned by ``scan_base_models``.
-    resolved = _abs_under_models(mid)
-    if os.path.isdir(resolved):
-        mid = resolved
-
-    need_reload = (_PIPE is None) or (_CUR_BASE != mid)
-    if need_reload:
-        pipe = DiffusionPipeline.from_pretrained(
-            mid,
-            use_safetensors=True,
-            torch_dtype=(_DTYPE if _DEV_KIND != "dml" else torch.float32),
-            variant=("fp16" if _DTYPE == torch.float16 else None),
-        )
-        pipe.to(_DEVICE)
-        pipe.enable_vae_tiling()
-        if _DEV_KIND == "cuda":
-            with contextlib.suppress(Exception):
-                pipe.enable_xformers_memory_efficient_attention()
-        _PIPE = pipe
-        _CUR_BASE = mid
-
-    if quality == "Fast (LCM)":
-        _PIPE.scheduler = LCMScheduler.from_config(_PIPE.scheduler.config)
-    else:
-        _PIPE.scheduler = DPMSolverMultistepScheduler.from_config(
-            _PIPE.scheduler.config
-        )
-
-    return _PIPE
+    return pipeline_cache.get_txt2img(model_id, quality=quality, local_dir=local_dir)
 
 def configure_adapters(pipe, lcm_dir, loras, lora_weights, quality_mode):
-    global _ACTIVE_ADAPTERS
-    adapters, weights = [], []
-    if quality_mode=="Fast (LCM)" and lcm_dir and os.path.isdir(lcm_dir):
-        try: pipe.load_lora_weights(lcm_dir, adapter_name="lcm"); adapters.append("lcm"); weights.append(1.0)
-        except Exception as e: print("[WARN] LCM:", e)
-    for p in (loras or []):
-        try:
-            an = os.path.splitext(os.path.basename(p))[0]
-            try: pipe.load_lora_into_unet(p, adapter_name=an)
-            except: pipe.load_lora_weights(p, adapter_name=an)
-            weights.append(float(lora_weights.get(p,1.0))); adapters.append(an)
-        except Exception as e: print("[WARN] LoRA:", p, e)
-    if adapters:
-        try: pipe.set_adapters(adapters, adapter_weights=weights)
-        except Exception as e: print("[WARN] set_adapters:", e)
-    elif _ACTIVE_ADAPTERS:
-        try: pipe.set_adapters([])
-        except Exception as e: print("[WARN] clear adapters:", e)
-        try: pipe.unload_lora_weights()
-        except Exception as e: print("[WARN] unload adapters:", e)
-    _ACTIVE_ADAPTERS = adapters[:]
+    return pipeline_cache.apply_loras(
+        pipe,
+        quality_mode=quality_mode,
+        lcm_dir=lcm_dir,
+        loras=loras,
+        lora_weights=lora_weights,
+    )
 
 def _sanitize(s):
     if s is None: return ""
@@ -179,9 +110,10 @@ def generate(prompt, negative, seed, steps, cfg, w, h, quality, pixel_scale, pal
                    generator=gen).images[0]
     pix = to_pixel_art(img, scale=int(pixel_scale), palette=str(palette),
                        dither=bool(dither), crisp=bool(crisp), sharpen=float(sharpen))
+    active_adapters = pipeline_cache.get_active_adapters(pipe)
     meta = {"prompt":prompt,"negative_prompt":negative,"seed":seed,"steps":steps,"guidance":cfg,
             "width":int(w),"height":int(h),"palette":palette,"pixel_scale":int(pixel_scale),
-            "model":base_model,"adapters":_ACTIVE_ADAPTERS[:], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
+            "model":base_model,"adapters":active_adapters[:], "created_at":datetime.datetime.utcnow().isoformat()+"Z",
             "loras": lora_files or []}
     return img, pix, meta
 
