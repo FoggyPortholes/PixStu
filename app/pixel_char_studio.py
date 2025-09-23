@@ -32,8 +32,16 @@ MODELS_ROOT = os.getenv("PCS_MODELS_ROOT", os.path.join(EXE_DIR, "models"))
 
 def _abs_under_models(p):
     if not p: return p
-    if os.path.isabs(p): return os.path.normpath(p)
-    return os.path.normpath(os.path.abspath(os.path.join(MODELS_ROOT, p)))
+    expanded = os.path.expanduser(str(p))
+    if os.path.isabs(expanded): return os.path.normpath(expanded)
+    normalized = os.path.normpath(expanded)
+    project_candidate = os.path.abspath(os.path.join(PROJ, normalized))
+    if os.path.exists(project_candidate):
+        return os.path.normpath(project_candidate)
+    parts = normalized.split(os.sep)
+    if parts and parts[0] == "models":
+        normalized = os.path.join(*parts[1:]) if len(parts) > 1 else ""
+    return os.path.normpath(os.path.abspath(os.path.join(MODELS_ROOT, normalized)))
 
 def _device():
     if torch.cuda.is_available(): return "cuda", torch.float16, "cuda"

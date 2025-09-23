@@ -42,10 +42,22 @@ def _make_generator(seed: Optional[int]) -> Optional[torch.Generator]:
 def _resolve_under_models(path: Optional[str]) -> Optional[str]:
     if not path:
         return path
-    if os.path.isabs(path):
-        return path
-    candidate = os.path.join(MODELS_ROOT, path)
-    return os.path.abspath(candidate)
+
+    expanded = os.path.expanduser(str(path))
+    if os.path.isabs(expanded):
+        return os.path.normpath(expanded)
+
+    normalized = os.path.normpath(expanded)
+
+    project_candidate = os.path.abspath(os.path.join(PROJ, normalized))
+    if os.path.exists(project_candidate):
+        return project_candidate
+
+    parts = normalized.split(os.sep)
+    if parts and parts[0] == "models":
+        normalized = os.path.join(*parts[1:]) if len(parts) > 1 else ""
+
+    return os.path.abspath(os.path.join(MODELS_ROOT, normalized))
 
 
 def _resolve_model_id(candidate: Optional[str]) -> Optional[str]:
