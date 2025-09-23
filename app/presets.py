@@ -39,7 +39,7 @@ class Presets:
 
     def _load(self):
         try:
-            with open(self.path, "r", encoding="utf-8") as handle:
+            with open(self.path, "r", encoding="utf-8-sig") as handle:
                 data = json.load(handle)
             raw_presets = data.get("presets", [])
         except Exception as exc:

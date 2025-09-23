@@ -166,11 +166,32 @@ def find_by_filename(filename: str) -> Optional[LoraRecord]:
 def resolve_path(raw_path: str) -> Optional[LoraRecord]:
     if not raw_path:
         return None
-    normalized = raw_path.replace("\\", "/").lstrip("./")
+    normalized = raw_path.replace("\\", "/")
+    records = list_records()
+
+    if os.path.isabs(raw_path):
+        abs_path = os.path.normpath(raw_path)
+        for record in records:
+            if os.path.normpath(record.local_path) == abs_path:
+                return record
+        if os.path.exists(abs_path):
+            rel = os.path.relpath(abs_path, MODELS).replace("\\", "/")
+            if rel.startswith(".."):
+                rel = abs_path
+            return LoraRecord(
+                name=os.path.basename(abs_path),
+                filename=os.path.basename(abs_path),
+                path=rel,
+                local_path=abs_path,
+                exists=True,
+            )
+        return None
+
+    while normalized.startswith("./"):
+        normalized = normalized[2:]
     if normalized.startswith("models/"):
         normalized = normalized[len("models/"):]
     candidates = [normalized, os.path.join("lora", os.path.basename(normalized))]
-    records = list_records()
     for record in records:
         rec_path = record.path.replace("\\", "/")
         if rec_path == normalized or rec_path == candidates[0] or rec_path == candidates[1]:
