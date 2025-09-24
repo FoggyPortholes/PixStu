@@ -228,13 +228,44 @@ def _install_wan22() -> str:
     return f"Wan2.2 {message}"
 
 
+def _paths_match(candidate: object, selected: object) -> bool:
+    """Return ``True`` when two LoRA identifiers refer to the same path.
+
+    ``gr.Dataframe`` rows surface the ``display_path`` values from presets,
+    which may be relative paths.  During asset validation we also work with
+    fully-resolved absolute paths.  This helper normalises both sides and
+    performs a case-sensitive comparison so we can decide whether a missing
+    entry corresponds to the selected LoRA.
+    """
+
+    if not candidate or not selected:
+        return False
+
+    cand = str(candidate)
+    sel = str(selected)
+    if cand == sel:
+        return True
+
+    try:
+        return os.path.abspath(cand) == os.path.abspath(sel)
+    except (TypeError, ValueError, OSError):  # pragma: no cover - defensive
+        return False
+
+
 def _quick_render(preset_name, lora_path, weight):
     p = get_preset(preset_name)
     if not p:
         raise gr.Error("Preset not found")
     missing = missing_assets(p)
     if missing:
-        raise gr.Error(_asset_status_message(missing))
+        targeted_missing = [
+            entry
+            for entry in missing
+            if _paths_match(entry.get("display_path"), lora_path)
+            or _paths_match(entry.get("resolved_path"), lora_path)
+        ]
+        if targeted_missing:
+            raise gr.Error(_asset_status_message(targeted_missing))
     try:
         target_weight = float(weight)
     except (TypeError, ValueError):
