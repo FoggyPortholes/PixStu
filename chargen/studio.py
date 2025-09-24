@@ -26,6 +26,26 @@ def _quick_render(preset_name, lora_path, weight):
     gen = BulletProofGenerator(p)
     return gen.generate("LoRA quick preview", seed=42)
 
+
+def _format_missing_assets(missing: list[dict]) -> str:
+    if not missing:
+        return ""
+    lines = ["Preset assets missing:"]
+    for item in missing:
+        details = item.get("path", "<unknown>")
+        download = item.get("download")
+        size = item.get("size_gb")
+        extra = []
+        if download:
+            extra.append(f"download: {download}")
+        if size:
+            extra.append(f"size: {size} GB")
+        if extra:
+            details = f"{details} ({'; '.join(extra)})"
+        lines.append(f"- {details}")
+    lines.append("Place the files in the reported locations or run `python -m chargen.setup_all` to fetch curated assets.")
+    return "\n".join(lines)
+
 def build_ui():
     with gr.Blocks(css=RETRO_CSS, title="PixStu Studio") as demo:
         # Character Studio
@@ -46,8 +66,9 @@ def build_ui():
 
             def _run(preset_name, pr, sd, loras_override):
                 p = get_preset(preset_name)
-                if missing_assets(p):
-                    raise gr.Error("Preset assets missing.")
+                missing = missing_assets(p)
+                if missing:
+                    raise gr.Error(_format_missing_assets(missing))
                 for row, l in zip(loras_override, p.get("loras", [])):
                     l["weight"] = float(row[1]) if row[1] else l.get("weight",1.0)
                 gen = BulletProofGenerator(p)
@@ -80,8 +101,9 @@ def build_ui():
 
             def _run_sub(preset_name, i1, i2, pr, loras_override):
                 p = get_preset(preset_name)
-                if missing_assets(p):
-                    raise gr.Error("Preset assets missing.")
+                missing = missing_assets(p)
+                if missing:
+                    raise gr.Error(_format_missing_assets(missing))
                 for row, l in zip(loras_override, p.get("loras", [])):
                     l["weight"] = float(row[1]) if row[1] else l.get("weight",1.0)
                 eng = SubstitutionEngine(p)
