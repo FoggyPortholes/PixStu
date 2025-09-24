@@ -1,31 +1,33 @@
-import sys, hashlib
+import hashlib
+import sys
 
-# Minimal PII scrubber without regex backslash escapes
-# - Redacts common UNIX-style home paths
-# - Hashes filenames found in simple tokens ending with .png/.jpg/.jpeg/.json
 
-def simple_scrub_line(s):
-    # redact unix home paths
-    s = s.replace("/Users/", "/home/<redacted>/").replace("/home/", "/home/<redacted>/")
-    # collapse whitespace
-    s = " ".join(s.split())
-    # filename hashing (very simple heuristic)
-    out = []
-    for tok in s.split(" "):
-        low = tok.lower()
-        if low.endswith(".png") or low.endswith(".jpg") or low.endswith(".jpeg") or low.endswith(".json"):
-            name = tok.rsplit("/", 1)[-1].rsplit(".", 1)[0]
-            ext = tok.rsplit(".", 1)[-1]
-            hashed = "file_" + hashlib.sha1(name.encode()).hexdigest()[:8] + "." + ext
-            out.append(hashed)
+def simple_scrub_line(line: str) -> str:
+    line = line.replace("/Users/", "/home/<redacted>/").replace("/home/", "/home/<redacted>/")
+    tokens = line.split()
+    cleaned = []
+    for token in tokens:
+        lower = token.lower()
+        if lower.endswith((".png", ".jpg", ".jpeg", ".json")):
+            name = token.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+            ext = token.rsplit(".", 1)[-1]
+            digest = hashlib.sha1(name.encode()).hexdigest()[:8]
+            cleaned.append(f"file_{digest}.{ext}")
         else:
-            out.append(tok)
-    return " ".join(out)
+            cleaned.append(token)
+    return " ".join(cleaned)
+
+
+def main(src: str, dst: str) -> None:
+    with open(src, encoding="utf-8", errors="ignore") as handle:
+        lines = [simple_scrub_line(line.rstrip()) for line in handle]
+    with open(dst, "w", encoding="utf-8") as out:
+        for line in lines:
+            if line:
+                out.write(line + "\n")
+
 
 if __name__ == "__main__":
-    src, dst = sys.argv[1], sys.argv[2]
-    with open(src, encoding="utf-8", errors="ignore") as f:
-        lines = [simple_scrub_line(x) for x in f]
-    with open(dst, "w", encoding="utf-8") as g:
-        for ln in lines:
-            if ln: g.write(ln+"\n")
+    if len(sys.argv) != 3:
+        raise SystemExit("Usage: python tools/sanitize_reports.py <src> <dst>")
+    main(sys.argv[1], sys.argv[2])

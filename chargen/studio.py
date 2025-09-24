@@ -1,94 +1,214 @@
-from __future__ import annotations
-
 import os
-import socket
-
 import gradio as gr
+from chargen.presets import get_preset_names, get_preset, missing_assets
+from chargen.generator import BulletProofGenerator
+from chargen.pin_editor import Pin, apply_pin_edits
+from chargen.substitution import SubstitutionEngine
+from tools.download_manager import DownloadManager
 
-from .character_studio import build_ui
-from .logging_config import configure_logging
+dl = DownloadManager()
 
-
-def _env_port() -> int | None:
-    for key in ("PCS_PORT", "GRADIO_SERVER_PORT"):
-        value = os.environ.get(key)
-        if value:
-            try:
-                return int(value)
-            except ValueError:
-                continue
-    return None
-
-
-def _port_available(host: str, port: int) -> bool:
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((host, port))
-        return True
-    except OSError:
-        return False
+RETRO_CSS = """
+:root { --accent: #44e0ff; }
+body { font-family: 'Press Start 2P', monospace; background: #0a0a0f; color: #e6e6f0; }
+.gr-button { border-radius: 16px; }
+"""
 
 
-def _pick_port(host: str) -> int | None:
-    env_port = _env_port()
-    if env_port:
-        return env_port
-    default_port = 7860
-    return default_port if _port_available(host, default_port) else None
+def build_ui():
+    with gr.Blocks(css=RETRO_CSS, title="CharGen Studio") as demo:
+        with gr.Tab("Character Studio"):
+            preset = gr.Dropdown(
+                label="Preset",
+                choices=get_preset_names(),
+                info="Select style/model preset",
+            )
+            prompt = gr.Textbox(
+                label="Prompt",
+                info="Describe the character, pose, or action",
+            )
+            seed = gr.Number(
+                label="Seed",
+                value=42,
+                precision=0,
+                info="Use same seed for reproducibility",
+            )
+            go = gr.Button("Generate", info="Create character image")
+            out = gr.Image(label="Output", type="pil")
+            missing = gr.HTML(label="Missing Assets", visible=False)
 
+            def _check_missing(preset_name):
+                p = get_preset(preset_name) or {}
+                miss = missing_assets(p)
+                if not miss:
+                    return gr.update(visible=False, value="")
+                items = [
+                    f"<li>{os.path.basename(m['path'])} — ~{m['size_gb']} GB</li>"
+                    for m in miss
+                    if m.get("path")
+                ]
+                html = (
+                    "<b>Missing assets:</b><ul>"
+                    + "".join(items)
+                    + "</ul>Go to the Downloads tab to queue. Only one download runs at a time."
+                )
+                return gr.update(visible=True, value=html)
 
-def build_app() -> gr.Blocks:
-    configure_logging()
-    demo = build_ui()
-    print('[SELFTEST] Starting quick checks...')
-    try:
-        from .presets import get_preset_names
+            preset.change(_check_missing, [preset], [missing])
 
-        names = get_preset_names()
-        assert names, 'No presets found'
-        print('[SELFTEST] Presets:', len(names))
-    except Exception as exc:
-        print('[SELFTEST] Preset load error:', exc)
+            def _run(preset_name, pr, sd):
+                p = get_preset(preset_name) or {}
+                if missing_assets(p):
+                    raise gr.Error("Preset assets missing. See Downloads tab.")
+                gen = BulletProofGenerator(p)
+                return gen.generate(pr, int(sd))
 
-    try:
-        from .ui_guard import check_ui
+            go.click(_run, [preset, prompt, seed], [out])
 
-        issues = check_ui(demo)
-        if issues:
-            print('[SELFTEST] UI drift found:')
-            for issue in issues:
-                print(' -', issue)
-        else:
-            print('[SELFTEST] UI OK')
-    except Exception as exc:
-        print('[SELFTEST] UI check skipped:', exc)
-    demo.share = False
+        with gr.Tab("Substitution"):
+            preset_dd = gr.Dropdown(
+                label="Preset",
+                choices=get_preset_names(),
+                info="Select preset for substitution",
+            )
+            char1 = gr.Image(
+                label="Identity Image (char1)",
+                type="pil",
+                info="Upload reference image for identity",
+            )
+            char2 = gr.Image(
+                label="Pose Image (char2)",
+                type="pil",
+                info="Upload pose image (OpenPose auto-extract if available)",
+            )
+            sprompt = gr.Textbox(
+                label="Prompt",
+                lines=2,
+                info="Extra description for substitution run",
+            )
+            id_strength = gr.Slider(
+                0.0,
+                1.0,
+                value=0.7,
+                step=0.05,
+                label="Identity Strength",
+                info="Blend ratio of identity image",
+            )
+            pose_strength = gr.Slider(
+                0.0,
+                2.0,
+                value=1.0,
+                step=0.05,
+                label="Pose Strength",
+                info="Strength of pose conditioning",
+            )
+            sseed = gr.Number(
+                label="Seed",
+                value=42,
+                precision=0,
+                info="Seed for deterministic substitution",
+            )
+            go2 = gr.Button("Generate Substitution", info="Run identity?pose substitution")
+            sub_out = gr.Image(label="Output")
+
+            def _run_sub(preset_name, i1, i2, pr, ids, poses, sd):
+                p = get_preset(preset_name) or {}
+                if missing_assets(p):
+                    raise gr.Error("Preset assets missing. See Downloads tab.")
+                engine = SubstitutionEngine(p)
+                return engine.run(
+                    char1_identity=i1,
+                    char2_pose=i2,
+                    prompt=pr,
+                    identity_strength=float(ids or 0.0),
+                    pose_strength=float(poses or 0.0),
+                    seed=int(sd or 0),
+                )
+
+            go2.click(
+                _run_sub,
+                [preset_dd, char1, char2, sprompt, id_strength, pose_strength, sseed],
+                [sub_out],
+            )
+
+        with gr.Tab("Pin Editor"):
+            preset_pin = gr.Dropdown(
+                label="Preset (optional)",
+                choices=get_preset_names(),
+                info="Use preset's base model for inpaint",
+            )
+            pin_base = gr.Image(
+                label="Base Image",
+                type="pil",
+                info="Image to edit with targeted pins",
+            )
+            pin_table = gr.Dataframe(
+                headers=["x", "y", "label", "prompt"],
+                row_count=(0, "dynamic"),
+                label="Pins Table",
+                interactive=True,
+            )
+            ref_img = gr.Image(label="Optional Reference Image", type="pil")
+            radius = gr.Slider(
+                8,
+                128,
+                value=32,
+                step=1,
+                label="Pin Radius",
+                info="Mask radius around each pin",
+            )
+            apply_btn = gr.Button("Apply Pin Edits", info="Run placeholder inpaint per pin")
+            out_gallery = gr.Gallery(label="Pin Edit Results", columns=3)
+
+            def _apply(preset_name, base_img, rows, ref, r):
+                if base_img is None or not rows:
+                    return []
+                pins = []
+                for row in rows:
+                    try:
+                        x, y, label, pr = int(row[0]), int(row[1]), str(row[2]), str(row[3])
+                        pins.append(Pin(x, y, label or "pin", pr or "", ref))
+                    except Exception:
+                        continue
+                def _editor_fn(img, mask, prompt_text, ref_img):  # placeholder
+                    return img
+                return list(apply_pin_edits(base_img, pins, _editor_fn).values())
+
+            apply_btn.click(
+                _apply,
+                [preset_pin, pin_base, pin_table, ref_img, radius],
+                [out_gallery],
+            )
+
+        with gr.Tab("Reference Gallery"):
+            gr.Markdown("(Placeholder) Thumbnails grid. Click to load as reference.")
+
+        with gr.Tab("Downloads"):
+            url_in = gr.Textbox(label="Model/LoRA URL", info="Direct download link")
+            file_in = gr.Textbox(label="Save As (filename)", info="File name to save under loras/")
+            size_in = gr.Number(label="Size (GB)", value=1.0, info="Approximate size for info only")
+            add_btn = gr.Button("Queue Download", info="Add to background download queue")
+            status = gr.Textbox(label="Status", interactive=False)
+
+            def _queue(url, fname, size):
+                if not url or not fname:
+                    return "Invalid input"
+                dl.add(url, fname, float(size or 0.0))
+                dl.run_async()
+                return f"Queued {fname} ({size} GB)"
+
+            add_btn.click(_queue, [url_in, file_in, size_in], [status])
+
     return demo
 
 
 if __name__ == "__main__":
-    demo = build_app()
-    server_name = os.getenv("PCS_SERVER_NAME", "127.0.0.1")
-    port = _pick_port(server_name)
-    open_browser = os.getenv("PCS_OPEN_BROWSER", "0").lower() in {"1", "true", "yes", "on"}
+    demo = build_ui()
     try:
-        demo.launch(
-            share=False,
-            inbrowser=open_browser,
-            server_name=server_name,
-            server_port=port,
-            show_error=True,
-        )
-    except OSError as exc:
-        message = str(exc)
-        if port and "Cannot find empty port" in message:
-            demo.launch(
-                share=False,
-                inbrowser=open_browser,
-                server_name=server_name,
-                server_port=None,
-                show_error=True,
-            )
-        else:
-            raise
+        from chargen.ui_guard import check_ui
+
+        for issue in check_ui(demo):
+            print(issue)
+    except Exception as exc:  # pragma: no cover - optional guard
+        print("[UI] Drift check skipped:", exc)
+    demo.launch(server_name=os.getenv("PCS_SERVER_NAME", "127.0.0.1"), server_port=int(os.getenv("PCS_PORT", "7860")))
