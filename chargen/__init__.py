@@ -1,5 +1,5 @@
-﻿"""CharGen Studio core package."""
+"""CharGen Studio core package."""
 
-from .studio import build_app
+from .studio import build_ui
 
-__all__ = ["build_app"]
+__all__ = ["build_ui"]

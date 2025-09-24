@@ -38,14 +38,18 @@ class BulletProofGenerator:
         self.preset = preset or {}
         self.device = _detect_device()
         model_id = self.preset.get("model", "stabilityai/stable-diffusion-xl-base-1.0")
-        dtype = torch.float16 if self.device == "cuda" else torch.float32
+        dtype = getattr(torch, "float16", None) if self.device == "cuda" else getattr(torch, "float32", None)
         pipeline_cls = StableDiffusionXLPipeline
         if self.preset.get("controlnets") and StableDiffusionXLControlNetPipeline is not None:
             pipeline_cls = StableDiffusionXLControlNetPipeline
         if pipeline_cls is None:
             raise RuntimeError("Diffusers pipelines are unavailable; install diffusers[torch]")
         try:
-            self.pipe = pipeline_cls.from_pretrained(model_id, torch_dtype=dtype)
+            kwargs = {"torch_dtype": dtype} if dtype is not None else {}
+            if hasattr(pipeline_cls, "from_pretrained"):
+                self.pipe = pipeline_cls.from_pretrained(model_id, **kwargs)
+            else:  # lightweight test doubles
+                self.pipe = pipeline_cls(model_id, **kwargs)
         except Exception as exc:  # pragma: no cover - runtime failure
             raise RuntimeError(f"Failed to load pipeline {model_id}: {exc}")
         if hasattr(self.pipe, "to"):
