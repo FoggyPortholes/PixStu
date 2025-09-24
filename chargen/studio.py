@@ -17,12 +17,21 @@ RETRO_CSS = ":root { --accent: #44e0ff; } body { font-family: 'Press Start 2P', 
 from PIL import Image
 
 def _preset_to_lora_rows(preset):
-    return [[l.get("path",""), l.get("weight",1.0), l.get("download",""), l.get("size_gb","")] for l in preset.get("loras", [])]
+    return [
+        [
+            l.get("display_path") or l.get("path", ""),
+            l.get("weight", 1.0),
+            l.get("download", ""),
+            l.get("size_gb", ""),
+        ]
+        for l in preset.get("loras", [])
+    ]
 
 def _quick_render(preset_name, lora_path, weight):
     p = get_preset(preset_name)
     for l in p.get("loras", []):
-        l["weight"] = float(weight) if l.get("path") == lora_path else 0.0
+        display = l.get("display_path") or l.get("path")
+        l["weight"] = float(weight) if display == lora_path else 0.0
     gen = BulletProofGenerator(p)
     return gen.generate("LoRA quick preview", seed=42)
 
@@ -32,7 +41,11 @@ def _format_missing_assets(missing: list[dict]) -> str:
         return ""
     lines = ["Preset assets missing:"]
     for item in missing:
-        details = item.get("path", "<unknown>")
+        display = item.get("display_path") or item.get("resolved_path") or "<unknown>"
+        resolved = item.get("resolved_path")
+        details = display
+        if resolved and resolved != display:
+            details = f"{display} -> {resolved}"
         download = item.get("download")
         size = item.get("size_gb")
         extra = []

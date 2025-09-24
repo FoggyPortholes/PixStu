@@ -98,11 +98,14 @@ def _normalise_paths(preset: dict | None) -> dict | None:
     for entry in preset.get("loras", []):
         original = entry.get("path", "")
         entry["display_path"] = original
-        entry["path"] = _resolve_asset_path(original)
+        entry["resolved_path"] = _resolve_asset_path(original)
     for entry in preset.get("controlnets", []):
         local_dir = entry.get("local_dir") or entry.get("path")
         if local_dir:
-            entry["local_dir"] = _resolve_asset_path(local_dir)
+            entry["display_local_dir"] = local_dir
+            resolved_local = _resolve_asset_path(local_dir)
+            entry["local_dir_resolved"] = resolved_local
+            entry["local_dir"] = resolved_local
     return preset
 
 
@@ -115,11 +118,13 @@ def missing_assets(preset: dict):
     """Return list of missing files defined in preset['loras'] with download info."""
     missing = []
     for l in preset.get("loras", []):
-        path = _resolve_asset_path(l.get("path", "") or "")
-        if path and not os.path.exists(path):
+        resolved = l.get("resolved_path") or _resolve_asset_path(l.get("path", "") or "")
+        display = l.get("display_path") or l.get("path") or resolved
+        if resolved and not os.path.exists(resolved):
             missing.append(
                 {
-                    "path": path,
+                    "display_path": display,
+                    "resolved_path": resolved,
                     "download": l.get("download"),
                     "size_gb": l.get("size_gb", 0.0),
                 }
