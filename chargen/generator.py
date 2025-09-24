@@ -75,7 +75,7 @@ class BulletProofGenerator:
 
         # LoRA adapters
         for entry in self.preset.get("loras", []):
-            path = entry.get("path")
+            path = entry.get("resolved_path") or entry.get("path")
             weight = float(entry.get("weight", 1.0))
             if not path or not hasattr(self.pipe, "load_lora_weights"):
                 continue

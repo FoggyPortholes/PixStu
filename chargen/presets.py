@@ -4,6 +4,9 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Dict
 
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
 PRESET_FILE = os.path.join("configs", "curated_models.json")
 
 _CACHE: Dict[str, dict] | None = None
@@ -48,20 +51,80 @@ def get_preset_names() -> list[str]:
     return list(load_presets().keys())
 
 
+def _resolve_asset_path(path: str) -> str:
+    """Return an absolute path for preset assets, respecting PCS_MODELS_ROOT.
+
+    Presets in the repository reference assets relative to the project root
+    (for example ``loras/example.safetensors``).  When the portable launcher is
+    used we instead place assets underneath ``models/`` and expose that
+    directory via the ``PCS_MODELS_ROOT`` environment variable.  To keep the
+    presets portable we normalise any configured path against a small set of
+    candidate roots and return the first existing absolute path.
+    """
+
+    if not path:
+        return ""
+
+    original = Path(path)
+    if original.is_absolute():
+        return str(original)
+
+    candidates = []
+
+    # 1) Relative to the current working directory.
+    candidates.append(Path.cwd() / original)
+
+    # 2) Relative to PCS_MODELS_ROOT if provided (portable launcher).
+    models_root = os.getenv("PCS_MODELS_ROOT")
+    if models_root:
+        candidates.append(Path(models_root) / original)
+
+    # 3) Relative to the repository root (development checkout).
+    candidates.append(_REPO_ROOT / original)
+
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate.resolve())
+
+    # Fall back to an absolute path under the first candidate so downstream
+    # consumers receive a consistent absolute location even when missing.
+    return str(candidates[0].resolve()) if candidates else str(original.resolve())
+
+
+def _normalise_paths(preset: dict | None) -> dict | None:
+    if preset is None:
+        return None
+
+    for entry in preset.get("loras", []):
+        original = entry.get("path", "")
+        entry["display_path"] = original
+        entry["resolved_path"] = _resolve_asset_path(original)
+    for entry in preset.get("controlnets", []):
+        local_dir = entry.get("local_dir") or entry.get("path")
+        if local_dir:
+            entry["display_local_dir"] = local_dir
+            resolved_local = _resolve_asset_path(local_dir)
+            entry["local_dir_resolved"] = resolved_local
+            entry["local_dir"] = resolved_local
+    return preset
+
+
 def get_preset(name: str) -> dict | None:
-    preset = load_presets().get(name)
-    return deepcopy(preset) if preset is not None else None
+    preset = deepcopy(load_presets().get(name))
+    return _normalise_paths(preset)
 
 
 def missing_assets(preset: dict):
     """Return list of missing files defined in preset['loras'] with download info."""
     missing = []
     for l in preset.get("loras", []):
-        path = l.get("path", "") or ""
-        if path and not os.path.exists(path):
+        resolved = l.get("resolved_path") or _resolve_asset_path(l.get("path", "") or "")
+        display = l.get("display_path") or l.get("path") or resolved
+        if resolved and not os.path.exists(resolved):
             missing.append(
                 {
-                    "path": path,
+                    "display_path": display,
+                    "resolved_path": resolved,
                     "download": l.get("download"),
                     "size_gb": l.get("size_gb", 0.0),
                 }

@@ -17,12 +17,6 @@ RETRO_CSS = ":root { --accent: #44e0ff; } body { font-family: 'Press Start 2P', 
 
 
 def _preset_to_lora_rows(preset):
-    if not preset:
-        return []
-    return [
-        [l.get("path", ""), l.get("weight", 1.0), l.get("download", ""), l.get("size_gb", "")]
-        for l in preset.get("loras", [])
-    ]
 
 
 def _quick_render(preset_name, lora_path, weight):
@@ -30,82 +24,12 @@ def _quick_render(preset_name, lora_path, weight):
     if not p:
         raise gr.Error("Preset not found")
     for l in p.get("loras", []):
-        l["weight"] = float(weight) if l.get("path") == lora_path else 0.0
+        display = l.get("display_path") or l.get("path")
+        l["weight"] = float(weight) if display == lora_path else 0.0
     gen = BulletProofGenerator(p)
     return gen.generate("LoRA quick preview", seed=42)
 
 
-def _hf_auth(token: str):
-    if token:
-        try:
-            hf_login(token=token)
-            return "[HF] Authenticated with Hugging Face Hub"
-        except Exception as e:  # pragma: no cover - hub errors vary
-            return f"[HF] Authentication failed: {e}"
-    return "[HF] No token provided. Public models only."
-
-
-def _install_wan22():
-    try:
-        subprocess.check_call(
-            [
-                "pip",
-                "install",
-                "--prefer-binary",
-                "git+https://github.com/Wan-Video/Wan2.2.git#egg=wan22",
-            ]
-        )
-        return "[Wan2.2] Installed successfully. Restart may be required."
-    except Exception as e:  # pragma: no cover - installer side effects
-        return f"[Wan2.2] Install failed: {e}"
-
-
-def _auto_download_assets(preset_name):
-    if not preset_name:
-        return "[HF] No preset selected."
-    preset = get_preset(preset_name)
-    if not preset:
-        return f"[HF] Unknown preset: {preset_name}"
-    missing = missing_assets(preset)
-    if not missing:
-        return "[HF] All assets available."
-    downloaded = []
-    for asset in missing:
-        path = asset.get("path")
-        repo = asset.get("download")
-        if not path or not repo:
-            downloaded.append(f"Missing download info for {path}")
-            continue
-        filename = os.path.basename(path)
-        try:
-            tmp_path = hf_hub_download(repo_id=repo, filename=filename)
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            os.replace(tmp_path, path)
-            downloaded.append(path)
-        except Exception as exc:  # pragma: no cover - external download
-            downloaded.append(f"Failed: {path} ({exc})")
-    prefix = "[HF] Downloaded/checked:"
-    return f"{prefix} {downloaded}" if downloaded else "[HF] No downloads triggered."
-
-
-def _auto_download_on_select(preset_name):
-    preset = get_preset(preset_name) if preset_name else None
-    rows = _preset_to_lora_rows(preset)
-    status = _auto_download_assets(preset_name) if preset_name else "[HF] Select a preset."
-    return rows, status
-
-
-def _update_lora_weights(loras_override, preset):
-    if not loras_override:
-        return
-    for row, lora in zip(loras_override, preset.get("loras", [])):
-        if not row:
-            continue
-        try:
-            weight = float(row[1]) if row[1] not in (None, "") else lora.get("weight", 1.0)
-        except (TypeError, ValueError):
-            weight = lora.get("weight", 1.0)
-        lora["weight"] = weight
 
 
 def build_ui():
@@ -149,13 +73,7 @@ def build_ui():
             download_btn.click(_auto_download_assets, [preset], [asset_status])
 
             def _run(preset_name, pr, sd, loras_override):
-                preset_cfg = get_preset(preset_name)
-                if not preset_cfg:
-                    raise gr.Error("Preset not found")
-                if missing_assets(preset_cfg):
-                    raise gr.Error("Preset assets missing.")
-                _update_lora_weights(loras_override, preset_cfg)
-                gen = BulletProofGenerator(preset_cfg)
+
                 return gen.generate(pr, int(sd))
 
             def _run_quick(preset_name, loras_override):
@@ -187,13 +105,7 @@ def build_ui():
             download_btn_sub.click(_auto_download_assets, [preset_dd], [asset_status_sub])
 
             def _run_sub(preset_name, i1, i2, pr, loras_override):
-                preset_cfg = get_preset(preset_name)
-                if not preset_cfg:
-                    raise gr.Error("Preset not found")
-                if missing_assets(preset_cfg):
-                    raise gr.Error("Preset assets missing.")
-                _update_lora_weights(loras_override, preset_cfg)
-                eng = SubstitutionEngine(preset_cfg)
+
                 return eng.run(i1, i2, pr)
 
             def _run_quick_sub(preset_name, loras_override):
