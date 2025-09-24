@@ -1,6 +1,4 @@
 import os
-import subprocess
-import sys
 from typing import Iterable, List
 
 import gradio as gr
@@ -17,6 +15,7 @@ from chargen.img2gif import img2gif
 from chargen.txt2vid import txt2vid
 from chargen.txt2vid_diffusers import txt2vid_diffusers
 from chargen.txt2vid_wan import txt2vid_wan_guarded
+from chargen.wan_install import ensure_wan22_installed
 
 RETRO_CSS = ":root { --accent: #44e0ff; } body { font-family: 'Press Start 2P', monospace; background: #0a0a0f; color: #e6e6f0; } .gr-button{border-radius:16px;}"
 
@@ -196,32 +195,8 @@ def _hf_auth(token: str) -> str:
 
 
 def _install_wan22() -> str:
-    try:
-        __import__("wan22")
-    except ModuleNotFoundError:
-        command = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "git+https://github.com/Wan-Video/Wan2.2.git#egg=wan22",
-        ]
-        try:
-            result = subprocess.run(
-                command,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError as exc:  # pragma: no cover - runtime failures
-            output = exc.stderr.strip() or exc.stdout.strip() or str(exc)
-            return f"Wan2.2 install failed: {output}"
-        output = result.stdout.strip().splitlines()
-        tail = output[-1] if output else "Installation complete."
-        return f"Wan2.2 installed: {tail}"
-    except Exception as exc:  # pragma: no cover - runtime failures
-        return f"Wan2.2 check failed: {exc}"
-    return "Wan2.2 already installed."
+    _, message, _ = ensure_wan22_installed()
+    return f"Wan2.2 {message}"
 
 
 def _quick_render(preset_name, lora_path, weight):
