@@ -51,6 +51,9 @@ class Presets:
             preset["loras"] = loras
             self.presets.append(preset)
 
+    def refresh(self):
+        self._load()
+
     def names(self) -> List[str]:
         return [p.get("name", f"Preset {i}") for i, p in enumerate(self.presets)]
 

@@ -72,11 +72,15 @@ def generator_env(monkeypatch, tmp_path):
         cuda=SimpleNamespace(is_available=lambda: False),
     )
 
+<<<<<<< Updated upstream
     monkeypatch.setattr(model_setup, "OUTPUTS", str(outputs_dir))
     monkeypatch.setattr(model_setup, "MODELS", str(models_dir))
     monkeypatch.setattr(model_setup, "LORAS", str(lora_dir))
     monkeypatch.setattr(model_setup, "ROOT", str(tmp_path))
     monkeypatch.setattr(generator, "model_setup", model_setup)
+=======
+    monkeypatch.setattr(generator, "OUTPUTS", str(outputs_dir))
+>>>>>>> Stashed changes
     monkeypatch.setattr(generator, "torch", torch_stub)
 
     txt2img_cls = _make_dummy_pipeline("Txt2Img")
@@ -84,9 +88,32 @@ def generator_env(monkeypatch, tmp_path):
     monkeypatch.setattr(generator, "StableDiffusionXLPipeline", txt2img_cls)
     monkeypatch.setattr(generator, "StableDiffusionXLImg2ImgPipeline", img2img_cls)
 
+    record = SimpleNamespace(
+        name="Pixel Art Character XL",
+        filename="pixel.safetensors",
+        path="lora/pixel.safetensors",
+        local_path=str(lora_file),
+        exists=True,
+        repo_id="catalog/repo",
+        preview_url=None,
+    )
+
+    monkeypatch.setattr(generator.lora_catalog, "resolve_path", lambda path: record)
+    monkeypatch.setattr(generator.lora_catalog, "find_record", lambda name: record if name == record.name else None)
+    monkeypatch.setattr(generator.lora_catalog, "download", lambda name: "downloaded")
+
     preset = {
         "base_model": "local/sdxl",
-        "loras": [{"path": "models/lora/pixel.safetensors", "weight": 0.8}],
+        "loras": [
+            {
+                "name": record.name,
+                "path": record.path,
+                "local_path": record.local_path,
+                "weight": 0.8,
+                "repo_id": record.repo_id,
+                "exists": True,
+            }
+        ],
         "suggested": {"steps": 12, "guidance": 4.5},
     }
 
@@ -97,6 +124,7 @@ def generator_env(monkeypatch, tmp_path):
         lora_file=lora_file,
         txt2img_cls=txt2img_cls,
         img2img_cls=img2img_cls,
+        record=record,
     )
 
 
@@ -107,14 +135,15 @@ def test_generate_writes_image_and_applies_lora(generator_env, tmp_path):
     assert out_path.exists()
     pipe = generator_env.txt2img_cls.instances[0]
     assert pipe.base == "local/sdxl"
-    assert pipe.load_calls[0]["directory"] == str(generator_env.lora_file.parent)
-    assert pipe.load_calls[0]["weight_name"] == generator_env.lora_file.name
-    assert pipe.set_args == {"names": ["preset_lora_0"], "weights": [0.8]}
+    call = pipe.load_calls[0]
+    assert call["directory"] == str(generator_env.lora_file.parent)
+    assert call["weight_name"] == generator_env.lora_file.name
+    assert pipe.set_args == {"names": [generator_env.record.name], "weights": [0.8]}
 
-    call = pipe.calls[0]
-    assert call["prompt"] == "mystic swordsman"
-    assert call["generator"] == 7
-    assert call["height"] == 128 and call["width"] == 128
+    call_inputs = pipe.calls[0]
+    assert call_inputs["prompt"] == "mystic swordsman"
+    assert call_inputs["generator"] == 7
+    assert call_inputs["height"] == 128 and call_inputs["width"] == 128
 
 
 def test_refine_uses_img2img_pipeline(generator_env, tmp_path):
@@ -135,11 +164,12 @@ def test_refine_uses_img2img_pipeline(generator_env, tmp_path):
 
     assert out_path.exists()
     pipe = generator_env.img2img_cls.instances[0]
-    assert pipe.load_calls[0]["directory"] == str(generator_env.lora_file.parent)
+    call = pipe.load_calls[0]
+    assert call["directory"] == str(generator_env.lora_file.parent)
 
-    call = pipe.calls[0]
-    assert call["prompt"] == "pose variant"
-    assert call["generator"] == 11
-    assert call["num_inference_steps"] == 12
-    assert call["guidance_scale"] == 4.5
-    assert call["image"].size == (192, 192)
+    call_inputs = pipe.calls[0]
+    assert call_inputs["prompt"] == "pose variant"
+    assert call_inputs["generator"] == 11
+    assert call_inputs["num_inference_steps"] == 12
+    assert call_inputs["guidance_scale"] == 4.5
+    assert call_inputs["image"].size == (192, 192)

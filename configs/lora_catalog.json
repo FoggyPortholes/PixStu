@@ -1,4 +1,4 @@
-{
+﻿{
   "loras": [
     {
       "name": "SDXL Offset Example",
@@ -41,6 +41,42 @@
       "path": "lora/anime-companion.safetensors",
       "preview_url": "https://huggingface.co/Meina/AnimeCharacterSDXL-LoRA/resolve/main/preview.png",
       "tags": ["sdxl", "anime", "character"]
+    },
+    {
+      "name": "Marvel Comics SDXL",
+      "description": "Bold lines and cinematic palettes inspired by Marvel comics and films.",
+      "repo_id": "smit-mehta/marvel-sdxl",
+      "filename": "pytorch_lora_weights.bin",
+      "path": "lora/marvel-sdxl/pytorch_lora_weights.bin",
+      "preview_url": null,
+      "tags": ["sdxl", "comics", "marvel", "superhero"]
+    },
+    {
+      "name": "Comic Legends SDXL",
+      "description": "Classic heroic comic aesthetic suited for DC-style characters.",
+      "repo_id": "Kousha/comic_person_LoRA",
+      "filename": "pytorch_lora_weights.safetensors",
+      "path": "lora/comic-legends/pytorch_lora_weights.safetensors",
+      "preview_url": null,
+      "tags": ["sdxl", "comics", "dc", "superhero"]
+    },
+    {
+      "name": "Final Fantasy Hero SDXL",
+      "description": "High-fantasy JRPG styling reminiscent of Final Fantasy concept art.",
+      "repo_id": "ntc-ai/SDXL-LoRA-slider.Awesome-Final-Fantasy-character",
+      "filename": "Awesome Final Fantasy character.safetensors",
+      "path": "lora/final-fantasy/Awesome Final Fantasy character.safetensors",
+      "preview_url": "https://huggingface.co/ntc-ai/SDXL-LoRA-slider.Awesome-Final-Fantasy-character/resolve/main/images/Awesome%20Final%20Fantasy%20character_19_0.0.png",
+      "tags": ["sdxl", "jrpg", "fantasy", "video game"]
+    },
+    {
+      "name": "Animated Feature SDXL",
+      "description": "Soft lighting and expressive faces inspired by modern animated movies.",
+      "repo_id": "ZachX/disney_SDXL_lora",
+      "filename": "disney_SDXL_lora.safetensors",
+      "path": "lora/animated-feature/disney_SDXL_lora.safetensors",
+      "preview_url": null,
+      "tags": ["sdxl", "disney", "animated", "movie"]
     }
   ]
 }
