@@ -1,0 +1,15 @@
+# PixStu Successor Note (v1.9.5-pre)
+
+## Device Fallback Chain
+CUDA → ZLUDA → MPS → CPU
+
+## What Changed
+- Added `tools/device.py`
+- Integrated into `inpaint.py`
+- Studio logs active device on startup
+
+## Quickstart
+pip install torch torchvision torchaudio
+python -m chargen.studio
+
+# Optional: set ZLUDA_PATH or LD_PRELOAD to point at libzluda if installed
