@@ -14,6 +14,8 @@ import torch
 from PIL import Image, ImageOps
 from diffusers import StableDiffusionInpaintPipeline
 
+from tools.device import pick_device
+
 try:  # pragma: no cover - optional dependency in some builds
     from tools.cache import Cache
 except Exception:  # pragma: no cover - cache support is optional
@@ -69,21 +71,6 @@ def _prep_mask(mask: Image.Image, threshold: Optional[float] = None) -> Image.Im
     else:
         mask = mask.convert("L")
     return mask
-
-
-def pick_device() -> torch.device:
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if os.environ.get("ZLUDA_PATH") or os.environ.get("ZKLUDA_PATH"):
-        return torch.device("cuda")
-    try:
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return torch.device("mps")
-    except Exception:  # pragma: no cover - dependent on torch build
-        pass
-    return torch.device("cpu")
-
-
 def pick_dtype(device: torch.device) -> torch.dtype:
     if device.type in {"cuda", "mps"}:
         return torch.float16
