@@ -123,8 +123,28 @@ def _apply_lora_overrides(preset: dict, overrides: Iterable[Iterable[object]] | 
 def _asset_status_message(missing: List[dict]) -> str:
     if not missing:
         return "All preset assets are available."
-    parts = [f"• {item.get('display_path', 'unknown')}" for item in missing]
-    return "Missing assets:\n" + "\n".join(parts)
+
+    parts: list[str] = []
+    for item in missing:
+        display = item.get("display_path") or item.get("resolved_path") or "unknown"
+        size = item.get("size_gb")
+        if isinstance(size, (int, float)) and size:
+            parts.append(f"• {display} (~{size:.2f} GB)")
+        else:
+            parts.append(f"• {display}")
+
+    models_root = os.getenv("PCS_MODELS_ROOT")
+    if models_root:
+        location_hint = f"Place assets under {models_root} or the repository's loras/ folder."
+    else:
+        location_hint = "Place assets under the repository's loras/ folder."
+
+    return (
+        "Missing assets:\n"
+        + "\n".join(parts)
+        + "\nUse ‘Download Missing Assets’ or the Downloads tab to fetch Hugging Face entries automatically.\n"
+        + location_hint
+    )
 
 
 def _auto_download_on_select(preset_name: str):
