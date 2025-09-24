@@ -4,6 +4,8 @@ from typing import Optional
 import torch
 from PIL import Image
 
+from tools.device import pick_device
+
 try:
     from diffusers import (
         ControlNetModel,
@@ -21,26 +23,6 @@ except Exception:  # pragma: no cover - optional dependency fallback
 logger = logging.getLogger(__name__)
 
 
-def _detect_device() -> str:
-    if torch.cuda.is_available():
-        return "cuda"
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return "mps"
-    try:
-        import zluda  # type: ignore  # pragma: no cover
-
-        return "cuda"
-    except Exception:
-        pass
-    try:
-        import zkluda  # type: ignore  # pragma: no cover
-
-        return "cuda"
-    except Exception:
-        pass
-    return "cpu"
-
-
 class SubstitutionEngine:
     """Simple identity?pose substitution scaffold."""
 
@@ -48,8 +30,8 @@ class SubstitutionEngine:
         if StableDiffusionXLPipeline is None:
             raise RuntimeError("Diffusers pipelines unavailable; install diffusers")
         self.preset = preset or {}
-        self.device = _detect_device()
-        dtype = torch.float16 if self.device == "cuda" else torch.float32
+        self.device = pick_device()
+        dtype = torch.float16 if self.device.type == "cuda" else torch.float32
         base_model = self.preset.get("model", "stabilityai/stable-diffusion-xl-base-1.0")
         self.controlnet = None
         if ControlNetModel is not None:
@@ -95,7 +77,7 @@ class SubstitutionEngine:
         pose_strength: float = 1.0,
         seed: int = 42,
     ) -> Image.Image:
-        generator = torch.Generator(self.device).manual_seed(int(seed))
+        generator = torch.Generator(device=self.device).manual_seed(int(seed))
         positives = list(self.preset.get("positive", []))
         negatives = set(self.preset.get("negative", []))
         negatives.update({"duplicate", "text", "caption", "speech bubble", "watermark", "logo"})
