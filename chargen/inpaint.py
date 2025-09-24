@@ -1,125 +1,239 @@
 #!/usr/bin/env python3
-"""
-PixStu Inpainting Module — Hardened
-===================================
-- Safe device/dtype picking (CUDA → ZLUDA → zkluda → MPS → CPU)
-- Autocast where supported + float32 fallback on CPU/MPS
-- Robust mask handling (single-channel "L", thresholding option)
-- Optional safety checker toggle (env or arg) for benchmarks
-- Deterministic seed option
-- Persistent cache hooks (read/write) via tools.cache
-"""
+"""Hardened inpainting helpers used by PixStu."""
+
 from __future__ import annotations
-<
+
+import hashlib
+import os
+from contextlib import nullcontext
+from pathlib import Path
+from typing import Optional, Tuple
+
 import torch
 from PIL import Image, ImageOps
 from diffusers import StableDiffusionInpaintPipeline
 
-try:
-    # Optional import; module exists in this pack
+try:  # pragma: no cover - optional dependency in some builds
     from tools.cache import Cache
-except Exception:  # pragma: no cover
+except Exception:  # pragma: no cover - cache support is optional
     Cache = None  # type: ignore
 
+DEFAULT_MODEL = os.environ.get(
+    "PIXSTU_INPAINT_MODEL", "runwayml/stable-diffusion-inpainting"
+)
+DEFAULT_GUIDANCE_SCALE = 7.5
+DEFAULT_STEPS = 50
+
+_PIPELINE: Optional[StableDiffusionInpaintPipeline] = None
+_PIPELINE_DEVICE: Optional[torch.device] = None
+_PIPELINE_MODEL_ID: Optional[str] = None
 
 
 def _has_env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _hash_inputs(*items: object) -> str:
+    digest = hashlib.sha256()
+
+    def _update(value: object) -> None:
+        if isinstance(value, Image.Image):
+            digest.update(value.mode.encode("utf-8"))
+            digest.update(str(value.size).encode("utf-8"))
+            digest.update(value.tobytes())
+        elif isinstance(value, Path):
+            digest.update(value.as_posix().encode("utf-8"))
+            if value.exists():
+                digest.update(str(value.stat().st_mtime_ns).encode("utf-8"))
+        elif isinstance(value, (bytes, bytearray)):
+            digest.update(value)
+        else:
+            digest.update(str(value).encode("utf-8"))
+
+    for item in items:
+        _update(item)
+    return digest.hexdigest()
+
+
+def _prep_mask(mask: Image.Image, threshold: Optional[float] = None) -> Image.Image:
+    if mask.mode not in {"L", "1"}:
+        mask = ImageOps.grayscale(mask)
+    if threshold is not None:
+        limit = float(threshold)
+
+        def _threshold(pixel: int) -> int:
+            return 255 if pixel >= limit else 0
+
+        mask = mask.point(_threshold)
+    else:
+        mask = mask.convert("L")
+    return mask
+
+
 def pick_device() -> torch.device:
-    # Honor immutable rule ordering: CUDA > ZLUDA > zkluda > MPS > CPU
     if torch.cuda.is_available():
         return torch.device("cuda")
-    # ZLUDA pathing (users set these to emulate CUDA). Nothing to probe reliably; prefer presence of env vars.
     if os.environ.get("ZLUDA_PATH") or os.environ.get("ZKLUDA_PATH"):
-        # Expose as CUDA device for pipelines that branch on .cuda
         return torch.device("cuda")
     try:
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
             return torch.device("mps")
-    except Exception:
+    except Exception:  # pragma: no cover - dependent on torch build
         pass
     return torch.device("cpu")
 
 
 def pick_dtype(device: torch.device) -> torch.dtype:
-    # Use fp16 on CUDA. MPS often wants float16 but diffusers can run float32; prefer float16 with fallback.
-    if device.type == "cuda":
-        return torch.float16
-    if device.type == "mps":
+    if device.type in {"cuda", "mps"}:
         return torch.float16
     return torch.float32
 
 
-def load_pipeline(model_id: str = DEFAULT_MODEL,
-                  disable_safety_checker: Optional[bool] = None) -> Tuple[StableDiffusionInpaintPipeline, torch.device]:
+def load_pipeline(
+    model_id: str = DEFAULT_MODEL,
+    disable_safety_checker: Optional[bool] = None,
+) -> Tuple[StableDiffusionInpaintPipeline, torch.device]:
     device = pick_device()
     dtype = pick_dtype(device)
 
-    # Allow opt-out of safety checker via env or explicit flag
     if disable_safety_checker is None:
         disable_safety_checker = _has_env_flag("PIXSTU_DISABLE_SAFETY")
 
     pipe = StableDiffusionInpaintPipeline.from_pretrained(
         model_id,
         torch_dtype=dtype,
-        safety_checker=None if disable_safety_checker else None  # keep None; SD1.5 inpaint ships without checker sometimes
+        safety_checker=None if disable_safety_checker else None,
     )
     pipe = pipe.to(device)
 
-    # Enable attention slicing on low-VRAM devices
     if device.type != "cuda":
         try:
             pipe.enable_attention_slicing()
-        except Exception:
+        except Exception:  # pragma: no cover - not all backends support it
             pass
 
     return pipe, device
 
 
+def _ensure_pipeline(
+    model_id: Optional[str], disable_safety_checker: Optional[bool]
+) -> Tuple[StableDiffusionInpaintPipeline, torch.device]:
+    global _PIPELINE, _PIPELINE_DEVICE, _PIPELINE_MODEL_ID
+
+    requested_model = model_id or DEFAULT_MODEL
+    if (
+        _PIPELINE is None
+        or _PIPELINE_DEVICE is None
+        or _PIPELINE_MODEL_ID != requested_model
+    ):
+        _PIPELINE, _PIPELINE_DEVICE = load_pipeline(
+            requested_model, disable_safety_checker=disable_safety_checker
+        )
+        _PIPELINE_MODEL_ID = requested_model
+
+    return _PIPELINE, _PIPELINE_DEVICE
 
 
-    Args:
-        prompt: Text prompt.
-        init_image: Path to base image.
-        mask_image: Path to mask image; white regions will be replaced.
-        guidance_scale: CFG scale.
-        steps: Inference steps.
-        threshold: Optional binarization threshold for the mask.
-        seed: Optional RNG seed for determinism.
-        model_id: HF repo id (override via env is defaulted above).
-        disable_safety_checker: Toggle safety checker.
-        use_cache: If True, consult and write persistent cache.
-    """
-    init_path = Path(init_image)
-    mask_path = Path(mask_image)
+def _as_image(image: Image.Image | str | Path, mode: str = "RGB") -> Image.Image:
+    if isinstance(image, Image.Image):
+        return image.convert(mode)
+    path = Path(image)
+    with Image.open(path) as handle:
+        return handle.convert(mode)
 
-    cache_key = _hash_inputs(prompt, init_path, mask_path, steps, guidance_scale, model_id, seed)
-    if use_cache and Cache is not None:
-        with Cache(namespace="inpaint") as c:
-            cached = c.get_image(cache_key)
-            if cached is not None:
-                return cached
 
-    pipe, device = load_pipeline(model_id=model_id, disable_safety_checker=disable_safety_checker)
+def _maybe_cache_get(key: str) -> Optional[Image.Image]:
+    if Cache is None:
+        return None
+    with Cache(namespace="inpaint") as cache:  # pragma: no cover - optional path
+        return cache.get_image(key)
 
-    init = Image.open(init_path).convert("RGB")
-    mask = Image.open(mask_path)
+
+def _maybe_cache_put(key: str, image: Image.Image) -> None:
+    if Cache is None:
+        return
+    with Cache(namespace="inpaint") as cache:  # pragma: no cover - optional path
+        cache.put_image(key, image)
+
+
+def inpaint_region(
+    init_image: Image.Image | str | Path,
+    mask_image: Image.Image | str | Path,
+    *,
+    prompt: str,
+    guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
+    steps: int = DEFAULT_STEPS,
+    threshold: Optional[float] = None,
+    seed: Optional[int] = None,
+    model_id: Optional[str] = None,
+    disable_safety_checker: Optional[bool] = None,
+    use_cache: bool = True,
+) -> Image.Image:
+    init = _as_image(init_image, "RGB")
+    mask = _as_image(mask_image, "L")
+    mask = mask.resize(init.size)
     mask = _prep_mask(mask, threshold=threshold)
 
-    # Seed control
+    cache_key = _hash_inputs(
+        prompt,
+        guidance_scale,
+        steps,
+        model_id or DEFAULT_MODEL,
+        seed if seed is not None else "",
+        init,
+        mask,
+    )
+
+    if use_cache:
+        cached = _maybe_cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+    pipe, device = _ensure_pipeline(model_id, disable_safety_checker)
+
     if seed is not None:
         generator = torch.Generator(device=device.type)
         generator.manual_seed(int(seed))
     else:
         generator = None
 
-    autocast_ctx = (
-        torch.cuda.amp.autocast if device.type == "cuda" else
-        (torch.autocast if hasattr(torch, "autocast") and device.type == "mps" else None)
+    autocast = (
+        torch.cuda.amp.autocast
+        if device.type == "cuda"
+        else torch.autocast if device.type == "mps" and hasattr(torch, "autocast") else None
     )
 
     def _run() -> Image.Image:
         result = pipe(
+            prompt=prompt,
+            image=init,
+            mask_image=mask,
+            guidance_scale=float(guidance_scale),
+            num_inference_steps=int(steps),
+            generator=generator,
+        )
+        output = result.images[0]
+        if not isinstance(output, Image.Image):
+            output = Image.fromarray(output)
+        return output
+
+    context = autocast() if autocast is not None else nullcontext()
+    with context:
+        generated = _run()
+
+    if use_cache:
+        _maybe_cache_put(cache_key, generated)
+
+    return generated
+
+
+__all__ = [
+    "DEFAULT_GUIDANCE_SCALE",
+    "DEFAULT_MODEL",
+    "DEFAULT_STEPS",
+    "inpaint_region",
+    "load_pipeline",
+    "pick_device",
+    "pick_dtype",
+]
 

@@ -14,7 +14,6 @@ from chargen.generator import BulletProofGenerator
 from chargen.pin_editor import Pin, apply_pin_edits
 from chargen.presets import get_preset, get_preset_names, missing_assets
 from chargen.substitution import SubstitutionEngine
-<
 
 # Optional imports for downloads
 try:  # pragma: no cover - optional dependency
@@ -78,14 +77,43 @@ def _missing_lora_filenames(entries: Iterable[dict]) -> list[str]:
     names: set[str] = set()
     for entry in entries:
         path = (
-            entry.get("display_path")
-            or entry.get("resolved_path")
+            entry.get("resolved_path")
+            or entry.get("display_path")
             or entry.get("path")
             or ""
         )
         if not path:
             continue
+        names.add(Path(path).name)
+    return sorted(names)
 
+
+def _quick_render(preset_name: str, lora_path: str, strength: float):
+    preset = get_preset(preset_name) or {}
+    preset.setdefault("loras", [])
+
+    expected_path = Path(lora_path)
+    missing = missing_assets(preset)
+    missing_paths = {
+        Path(asset.get("resolved_path") or asset.get("path") or "")
+        for asset in missing
+        if asset.get("resolved_path") or asset.get("path")
+    }
+
+    if expected_path in missing_paths or not expected_path.exists():
+        missing_name = expected_path.name
+        message = (
+            "Selected LoRA is missing: "
+            f"{missing_name} (expected at {expected_path.as_posix()})"
+        )
+        raise gr.Error(message)
+
+    selected_entry = None
+    for entry in preset.get("loras", []):
+        candidate = entry.get("resolved_path") or entry.get("path")
+        if candidate and Path(candidate) == expected_path:
+            selected_entry = entry
+            break
 
     if selected_entry is None:
         selected_entry = {
