@@ -9,10 +9,12 @@ from typing import Iterable
 
 import gradio as gr
 
+from chargen import lora_blend
 from chargen.generator import BulletProofGenerator
 from chargen.pin_editor import Pin, apply_pin_edits
 from chargen.presets import get_preset, get_preset_names, missing_assets
 from chargen.substitution import SubstitutionEngine
+<
 
 # Optional imports for downloads
 try:  # pragma: no cover - optional dependency
@@ -83,41 +85,7 @@ def _missing_lora_filenames(entries: Iterable[dict]) -> list[str]:
         )
         if not path:
             continue
-        names.add(Path(path).name)
-    return sorted(names)
 
-
-def _quick_render(preset_name: str, lora_path: str, strength: float):
-    """Render a quick LoRA preview, handling missing assets defensively."""
-
-    preset = get_preset(preset_name) or {}
-    lora_entries = list(preset.get("loras", []))
-
-    selected_entry = None
-    for entry in lora_entries:
-        display = entry.get("display_path") or ""
-        resolved = entry.get("resolved_path") or entry.get("path") or display
-        if lora_path in {display, resolved}:
-            selected_entry = entry
-            break
-
-    expected_path = Path(lora_path)
-    if selected_entry is not None:
-        resolved = selected_entry.get("resolved_path") or selected_entry.get("path")
-        if resolved:
-            expected_path = Path(resolved)
-
-    candidate_paths = {expected_path, Path(lora_path)}
-    candidate_paths = {p for p in candidate_paths if str(p)}
-
-    if not any(p.exists() for p in candidate_paths):
-        missing_names = _try_auto_download([expected_path.name])
-        if missing_names and not any(p.exists() for p in candidate_paths):
-            message = _missing_assets_message(missing_names)
-            expected_locations = "\n".join(
-                f"Expected at: {p}" for p in sorted({str(p) for p in candidate_paths})
-            )
-            raise gr.Error(f"{message}\n{expected_locations}")
 
     if selected_entry is None:
         selected_entry = {
@@ -152,39 +120,7 @@ def build_ui() -> gr.Blocks:
             prompt = gr.Textbox(
                 label="Prompt", info="Describe the character, pose, or action"
             )
-            seed = gr.Number(
-                label="Seed",
-                value=42,
-                precision=0,
-                info="Use same seed for reproducibility",
-            )
-            generate_btn = gr.Button(
-                "Generate", info="Create character image"
-            )
-            out_img = gr.Image(label="Output", type="pil")
-            missing_html = gr.HTML(label="Missing Assets", visible=False)
 
-            def _check_missing(preset_name: str):
-                preset_data = get_preset(preset_name) or {}
-                miss = missing_assets(preset_data)
-                missing_names = _try_auto_download(_missing_lora_filenames(miss))
-                if not missing_names:
-                    return gr.update(visible=False, value="")
-                message = _missing_assets_message(missing_names)
-                return gr.update(visible=True, value=f"<pre>{message}</pre>")
-
-            preset.change(_check_missing, [preset], [missing_html])
-
-            def _run(preset_name: str, text_prompt: str, seed_value: float):
-                preset_data = get_preset(preset_name) or {}
-                miss = missing_assets(preset_data)
-                missing_names = _try_auto_download(_missing_lora_filenames(miss))
-                if missing_names:
-                    raise gr.Error(_missing_assets_message(missing_names))
-                generator = BulletProofGenerator(preset_data)
-                return generator.generate(text_prompt, int(seed_value))
-
-            generate_btn.click(_run, [preset, prompt, seed], [out_img])
 
         with gr.Tab("Substitution"):
             preset_sub = gr.Dropdown(

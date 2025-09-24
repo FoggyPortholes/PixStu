@@ -10,11 +10,7 @@ PixStu Inpainting Module — Hardened
 - Persistent cache hooks (read/write) via tools.cache
 """
 from __future__ import annotations
-from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
-import os
-import hashlib
-
+<
 import torch
 from PIL import Image, ImageOps
 from diffusers import StableDiffusionInpaintPipeline
@@ -25,7 +21,6 @@ try:
 except Exception:  # pragma: no cover
     Cache = None  # type: ignore
 
-DEFAULT_MODEL = os.environ.get("PIXSTU_INPAINT_MODEL", "runwayml/stable-diffusion-inpainting")
 
 
 def _has_env_flag(name: str) -> bool:
@@ -83,38 +78,7 @@ def load_pipeline(model_id: str = DEFAULT_MODEL,
     return pipe, device
 
 
-def _prep_mask(mask: Image.Image, threshold: Optional[int] = None) -> Image.Image:
-    """Ensure single-channel mask. White/1 = to be **inpainted** (Diffusers convention).
-    If threshold supplied, convert to binary L-mode mask.
-    """
-    if mask.mode != "L":
-        mask = mask.convert("L")
-    if threshold is not None:
-        # Binarize
-        mask = mask.point(lambda p: 255 if p >= threshold else 0)
-    return mask
 
-
-def _hash_inputs(prompt: str, init_path: Path, mask_path: Path, steps: int, guidance: float, model_id: str, seed: Optional[int]) -> str:
-    h = hashlib.sha256()
-    h.update(prompt.encode("utf-8"))
-    for p in (init_path, mask_path):
-        h.update(Path(p).read_bytes())
-    h.update(f"{steps}|{guidance}|{model_id}|{seed}".encode("utf-8"))
-    return h.hexdigest()
-
-
-def inpaint(prompt: str,
-            init_image: Path | str,
-            mask_image: Path | str,
-            guidance_scale: float = 7.5,
-            steps: int = 50,
-            threshold: Optional[int] = None,
-            seed: Optional[int] = None,
-            model_id: str = DEFAULT_MODEL,
-            disable_safety_checker: Optional[bool] = None,
-            use_cache: bool = True) -> Image.Image:
-    """Main inpaint entrypoint.
 
     Args:
         prompt: Text prompt.
@@ -158,60 +122,4 @@ def inpaint(prompt: str,
 
     def _run() -> Image.Image:
         result = pipe(
-            prompt=prompt,
-            image=init,
-            mask_image=mask,
-            guidance_scale=guidance_scale,
-            num_inference_steps=steps,
-            generator=generator
-        ).images[0]
-        return result
 
-    img: Image.Image
-    if autocast_ctx is not None:
-        try:
-            with autocast_ctx(device_type=device.type):
-                img = _run()
-        except Exception:
-            # Fallback to float32 on CPU if autocast path fails
-            pipe.to(torch.device("cpu"))
-            img = _run()
-    else:
-        img = _run()
-
-    if use_cache and Cache is not None:
-        with Cache(namespace="inpaint") as c:
-            c.put_image(cache_key, img)
-
-    return img
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(description="PixStu Inpainting Entrypoint")
-    parser.add_argument("--prompt", required=True)
-    parser.add_argument("--init", required=True)
-    parser.add_argument("--mask", required=True)
-    parser.add_argument("--out", default="out.png")
-    parser.add_argument("--steps", type=int, default=50)
-    parser.add_argument("--guidance", type=float, default=7.5)
-    parser.add_argument("--threshold", type=int)
-    parser.add_argument("--seed", type=int)
-    parser.add_argument("--disable-safety", action="store_true")
-    parser.add_argument("--no-cache", action="store_true")
-    args = parser.parse_args()
-
-    img = inpaint(
-        prompt=args.prompt,
-        init_image=args.init,
-        mask_image=args.mask,
-        steps=args.steps,
-        guidance_scale=args.guidance,
-        threshold=args.threshold,
-        seed=args.seed,
-        disable_safety_checker=args.disable_safety,
-        use_cache=not args.no_cache,
-    )
-    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
-    img.save(args.out)
-    print(f"[PixStu] Inpainting complete → {args.out}")

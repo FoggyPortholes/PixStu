@@ -65,6 +65,7 @@ assets/poses/**
 
 # Preferences/state that shouldn’t be versioned
 configs/preferences.json
+.pixstu/cache/
 
 # -------------------------
 # OS / Editor junk
