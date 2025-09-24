@@ -1,6 +1,10 @@
-﻿import os
+﻿import atexit
+import os
 import random
+import signal
 import socket
+import sys
+from contextlib import suppress
 
 import gradio as gr
 
@@ -12,6 +16,7 @@ from chargen.logging_config import configure_logging
 from tools.download_manager import DownloadManager
 
 dl = DownloadManager()
+_CLEANUP_REGISTERED = False
 
 RETRO_CSS = """
 :root { --accent: #44e0ff; }
@@ -41,12 +46,78 @@ def _port_available(host: str, port: int) -> bool:
         return False
 
 
-def _pick_port(host: str) -> int | None:
+def _port_candidates(host: str) -> list[int]:
     env_port = _env_port()
-    if env_port:
-        return env_port
-    default_port = 7860
-    return default_port if _port_available(host, default_port) else None
+    if env_port == 0:
+        return [0]
+
+    base_port = env_port if env_port else 7860
+    search_limit_raw = os.environ.get("PCS_PORT_SEARCH_LIMIT", "20")
+    try:
+        search_limit = int(search_limit_raw)
+    except ValueError:
+        search_limit = 20
+    search_limit = max(1, search_limit)
+
+    candidates: list[int] = []
+    for offset in range(search_limit):
+        candidate = base_port + offset
+        if candidate not in candidates:
+            candidates.append(candidate)
+
+    extra_ports = os.environ.get("PCS_PORT_FALLBACKS", "")
+    for raw in extra_ports.split(","):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            parsed = int(raw)
+        except ValueError:
+            continue
+        if parsed not in candidates:
+            candidates.append(parsed)
+
+    # Final fallback lets the OS choose if everything else fails.
+    if 0 not in candidates:
+        candidates.append(0)
+    return candidates
+
+
+def _is_port_conflict_error(error: OSError) -> bool:
+    conflict_errnos = {48, 98, 10013, 10048}
+    if getattr(error, "errno", None) in conflict_errnos:
+        return True
+    message = str(error).lower()
+    return "address already in use" in message or "cannot find empty port" in message
+
+
+def _register_cleanup(app: gr.Blocks):
+    global _CLEANUP_REGISTERED
+    if _CLEANUP_REGISTERED:
+        return lambda *_args: None
+    _CLEANUP_REGISTERED = True
+
+    def _cleanup(*_args):
+        with suppress(Exception):
+            if hasattr(dl, "shutdown"):
+                dl.shutdown()
+        with suppress(Exception):
+            app.close()
+
+    atexit.register(_cleanup)
+
+    for sig_name in ("SIGINT", "SIGTERM"):
+        sig = getattr(signal, sig_name, None)
+        if sig is None:
+            continue
+
+        def _handler(_signum, _frame, cleanup=_cleanup):
+            cleanup()
+            sys.exit(0)
+
+        signal.signal(sig, _handler)
+
+    return _cleanup
 
 
 def build_ui():
@@ -202,13 +273,42 @@ def build_app() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = build_app()
+    cleanup = _register_cleanup(app)
     server_name = os.getenv("PCS_SERVER_NAME", "127.0.0.1")
-    port = _pick_port(server_name)
     open_browser = os.getenv("PCS_OPEN_BROWSER", "0").lower() in {"1", "true", "yes", "on"}
-    app.launch(
-        share=False,
-        inbrowser=open_browser,
-        server_name=server_name,
-        server_port=port,
-        show_error=True,
-    )
+    candidates = _port_candidates(server_name)
+    last_error: OSError | None = None
+
+    try:
+        for candidate in candidates:
+            if candidate != 0 and not _port_available(server_name, candidate):
+                print(f"[PCS] Port {candidate} unavailable; trying next option.")
+                continue
+
+            try:
+                label = "auto" if candidate == 0 else str(candidate)
+                print(f"[PCS] Launching on {server_name}:{label}")
+                server_port = None if candidate == 0 else candidate
+                app.launch(
+                    share=False,
+                    inbrowser=open_browser,
+                    server_name=server_name,
+                    server_port=server_port,
+                    show_error=True,
+                )
+                break
+            except OSError as exc:
+                if _is_port_conflict_error(exc):
+                    last_error = exc
+                    print(f"[PCS] Failed to bind {server_name}:{label} ({exc}); retrying.")
+                    with suppress(Exception):
+                        app.close()
+                    continue
+                raise
+        else:
+            tried = ", ".join("auto" if port == 0 else str(port) for port in candidates)
+            raise RuntimeError(f"No available port found. Tried: {tried}") from last_error
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cleanup()
