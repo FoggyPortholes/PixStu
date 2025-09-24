@@ -9,3 +9,5 @@ requests==2.32.*
 moviepy==1.0.3
 imageio[ffmpeg]==2.34.*
 
+huggingface-hub==0.23.*
+# Wan2.2 installed on-demand via UI (pip install git+https://github.com/Wan-Video/Wan2.2.git#egg=wan22)
