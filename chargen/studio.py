@@ -1,11 +1,16 @@
 import os
 import subprocess
+import sys
+from typing import Iterable, List
+
 import gradio as gr
-from huggingface_hub import login as hf_login, hf_hub_download
-from chargen.presets import get_preset_names, get_preset, missing_assets
+from huggingface_hub import hf_hub_download
+from huggingface_hub import login as hf_login
+
 from chargen.generator import BulletProofGenerator
-from chargen.substitution import SubstitutionEngine
 from chargen.pin_editor import Pin
+from chargen.presets import get_preset, get_preset_names, missing_assets
+from chargen.substitution import SubstitutionEngine
 # Animation imports
 from chargen.txt2gif import txt2gif
 from chargen.img2gif import img2gif
@@ -16,16 +21,180 @@ from chargen.txt2vid_wan import txt2vid_wan_guarded
 RETRO_CSS = ":root { --accent: #44e0ff; } body { font-family: 'Press Start 2P', monospace; background: #0a0a0f; color: #e6e6f0; } .gr-button{border-radius:16px;}"
 
 
-def _preset_to_lora_rows(preset):
+def _preset_to_lora_rows(preset: dict | None) -> list[list[object]]:
+    """Convert preset LoRA entries into rows consumable by ``gr.Dataframe``."""
+
+    if not preset:
+        return []
+
+    rows: list[list[object]] = []
+    for entry in preset.get("loras", []):
+        display = entry.get("display_path") or entry.get("path") or ""
+        weight = float(entry.get("weight", 0.0) or 0.0)
+        download = entry.get("download", "")
+        size = entry.get("size_gb")
+        try:
+            size_val: object = float(size) if size is not None else ""
+        except (TypeError, ValueError):
+            size_val = ""
+        rows.append([display, weight, download, size_val])
+    return rows
+
+
+def _apply_lora_overrides(preset: dict, overrides: Iterable[Iterable[object]]) -> None:
+    """Apply LoRA weight overrides coming from the interactive table."""
+
+    if not preset or not overrides:
+        return
+
+    override_map: dict[str, float] = {}
+    for row in overrides:
+        if not row:
+            continue
+        path = row[0]
+        if not path:
+            continue
+        try:
+            weight = float(row[1])
+        except (TypeError, ValueError):
+            continue
+        override_map[str(path)] = weight
+
+    if not override_map:
+        return
+
+    for entry in preset.get("loras", []):
+        display = entry.get("display_path") or entry.get("path")
+        if display in override_map:
+            entry["weight"] = override_map[display]
+
+
+def _asset_status_message(missing: List[dict]) -> str:
+    if not missing:
+        return "All preset assets are available."
+    parts = [f"• {item.get('display_path', 'unknown')}" for item in missing]
+    return "Missing assets:\n" + "\n".join(parts)
+
+
+def _auto_download_on_select(preset_name: str):
+    preset = get_preset(preset_name)
+    if not preset:
+        return gr.update(value=[]), "Preset not found."
+
+    rows = _preset_to_lora_rows(preset)
+    missing = missing_assets(preset)
+    status = _asset_status_message(missing)
+    return gr.update(value=rows), status
+
+
+def _download_via_hub(entry: dict) -> str:
+    download = entry.get("download") or ""
+    if not download:
+        return f"{entry.get('display_path')}: no download metadata."
+
+    repo_id = None
+    filename = None
+    if "::" in download:
+        repo_id, filename = download.split("::", 1)
+    elif download.count("/") > 1 and not download.startswith("http"):
+        repo_id, filename = download.split("/", 1)
+
+    if not repo_id or not filename or hf_hub_download is None:
+        return f"{entry.get('display_path')}: unsupported download format."
+
+    target = entry.get("resolved_path") or entry.get("path") or ""
+    target_dir = os.path.dirname(target) or os.getcwd()
+    os.makedirs(target_dir, exist_ok=True)
+    try:
+        hf_hub_download(
+            repo_id=repo_id,
+            filename=filename,
+            local_dir=target_dir,
+            local_dir_use_symlinks=False,
+        )
+    except Exception as exc:  # pragma: no cover - network/runtime failures
+        return f"{entry.get('display_path')}: download failed ({exc})."
+    return f"{entry.get('display_path')}: downloaded."
+
+
+def _auto_download_assets(preset_name: str) -> str:
+    preset = get_preset(preset_name)
+    if not preset:
+        return "Preset not found."
+
+    missing = missing_assets(preset)
+    if not missing:
+        return "All preset assets are already available."
+
+    reports: list[str] = []
+    for entry in missing:
+        resolved = entry.get("resolved_path") or entry.get("path")
+        if resolved and os.path.exists(resolved):
+            continue
+        download_info = entry.get("download") or ""
+        if download_info and not download_info.startswith("http"):
+            reports.append(_download_via_hub(entry))
+        else:
+            reports.append(
+                f"{entry.get('display_path')}: manual download required ({download_info or 'no URL'})."
+            )
+    return "\n".join(reports)
+
+
+def _hf_auth(token: str) -> str:
+    token = (token or "").strip()
+    if not token:
+        return "Provide a Hugging Face token."
+    try:
+        hf_login(token=token, add_to_git_credential=False)
+    except Exception as exc:  # pragma: no cover - runtime failures
+        return f"Login failed: {exc}"
+    return "Authentication successful."
+
+
+def _install_wan22() -> str:
+    try:
+        __import__("wan22")
+    except ModuleNotFoundError:
+        command = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "git+https://github.com/Wan-Video/Wan2.2.git#egg=wan22",
+        ]
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:  # pragma: no cover - runtime failures
+            output = exc.stderr.strip() or exc.stdout.strip() or str(exc)
+            return f"Wan2.2 install failed: {output}"
+        output = result.stdout.strip().splitlines()
+        tail = output[-1] if output else "Installation complete."
+        return f"Wan2.2 installed: {tail}"
+    except Exception as exc:  # pragma: no cover - runtime failures
+        return f"Wan2.2 check failed: {exc}"
+    return "Wan2.2 already installed."
 
 
 def _quick_render(preset_name, lora_path, weight):
     p = get_preset(preset_name)
     if not p:
         raise gr.Error("Preset not found")
+    missing = missing_assets(p)
+    if missing:
+        raise gr.Error(_asset_status_message(missing))
+    try:
+        target_weight = float(weight)
+    except (TypeError, ValueError):
+        target_weight = 0.0
     for l in p.get("loras", []):
         display = l.get("display_path") or l.get("path")
-        l["weight"] = float(weight) if display == lora_path else 0.0
+        l["weight"] = target_weight if display == lora_path else 0.0
     gen = BulletProofGenerator(p)
     return gen.generate("LoRA quick preview", seed=42)
 
@@ -73,8 +242,22 @@ def build_ui():
             download_btn.click(_auto_download_assets, [preset], [asset_status])
 
             def _run(preset_name, pr, sd, loras_override):
+                preset_cfg = get_preset(preset_name)
+                if not preset_cfg:
+                    raise gr.Error("Preset not found")
 
-                return gen.generate(pr, int(sd))
+                _apply_lora_overrides(preset_cfg, loras_override)
+
+                missing = missing_assets(preset_cfg)
+                if missing:
+                    raise gr.Error(_asset_status_message(missing))
+
+                gen = BulletProofGenerator(preset_cfg)
+                try:
+                    seed_val = int(sd) if sd is not None else 42
+                except (TypeError, ValueError):
+                    seed_val = 42
+                return gen.generate(pr, seed=seed_val)
 
             def _run_quick(preset_name, loras_override):
                 if not loras_override:
@@ -105,7 +288,17 @@ def build_ui():
             download_btn_sub.click(_auto_download_assets, [preset_dd], [asset_status_sub])
 
             def _run_sub(preset_name, i1, i2, pr, loras_override):
+                preset_cfg = get_preset(preset_name)
+                if not preset_cfg:
+                    raise gr.Error("Preset not found")
 
+                _apply_lora_overrides(preset_cfg, loras_override)
+
+                missing = missing_assets(preset_cfg)
+                if missing:
+                    raise gr.Error(_asset_status_message(missing))
+
+                eng = SubstitutionEngine(preset_cfg)
                 return eng.run(i1, i2, pr)
 
             def _run_quick_sub(preset_name, loras_override):
