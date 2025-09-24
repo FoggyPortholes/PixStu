@@ -1,9 +1,13 @@
-import os
+ï»¿import os
+import socket
+
 import gradio as gr
+
 from chargen.presets import get_preset_names, get_preset, missing_assets
 from chargen.generator import BulletProofGenerator
 from chargen.pin_editor import Pin, apply_pin_edits
 from chargen.substitution import SubstitutionEngine
+from chargen.logging_config import configure_logging
 from tools.download_manager import DownloadManager
 
 dl = DownloadManager()
@@ -15,35 +19,52 @@ body { font-family: 'Press Start 2P', monospace; background: #0a0a0f; color: #e6
 """
 
 
+def _env_port() -> int | None:
+    for key in ("PCS_PORT", "GRADIO_SERVER_PORT"):
+        value = os.environ.get(key)
+        if value:
+            try:
+                return int(value)
+            except ValueError:
+                continue
+    return None
+
+
+def _port_available(host: str, port: int) -> bool:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))
+        return True
+    except OSError:
+        return False
+
+
+def _pick_port(host: str) -> int | None:
+    env_port = _env_port()
+    if env_port:
+        return env_port
+    default_port = 7860
+    return default_port if _port_available(host, default_port) else None
+
+
 def build_ui():
     with gr.Blocks(css=RETRO_CSS, title="CharGen Studio") as demo:
         with gr.Tab("Character Studio"):
-            preset = gr.Dropdown(
-                label="Preset",
-                choices=get_preset_names(),
-                info="Select style/model preset",
-            )
-            prompt = gr.Textbox(
-                label="Prompt",
-                info="Describe the character, pose, or action",
-            )
-            seed = gr.Number(
-                label="Seed",
-                value=42,
-                precision=0,
-                info="Use same seed for reproducibility",
-            )
-            go = gr.Button("Generate", info="Create character image")
-            out = gr.Image(label="Output", type="pil")
-            missing = gr.HTML(label="Missing Assets", visible=False)
+            preset = gr.Dropdown(label="Preset", choices=get_preset_names(), info="Select style/model preset")
+            prompt = gr.Textbox(label="Prompt", info="Describe the character, pose, or action")
+            seed = gr.Number(label="Seed", value=42, precision=0, info="Use same seed for reproducibility")
+            generate_btn = gr.Button("Generate", info="Create character image")
+            out_img = gr.Image(label="Output", type="pil")
+            missing_html = gr.HTML(label="Missing Assets", visible=False)
 
             def _check_missing(preset_name):
-                p = get_preset(preset_name) or {}
-                miss = missing_assets(p)
+                preset_data = get_preset(preset_name) or {}
+                miss = missing_assets(preset_data)
                 if not miss:
                     return gr.update(visible=False, value="")
                 items = [
-                    f"<li>{os.path.basename(m['path'])} — ~{m['size_gb']} GB</li>"
+                    f"<li>{os.path.basename(m['path'])} - ~{m['size_gb']} GB</li>"
                     for m in miss
                     if m.get("path")
                 ]
@@ -54,161 +75,119 @@ def build_ui():
                 )
                 return gr.update(visible=True, value=html)
 
-            preset.change(_check_missing, [preset], [missing])
+            preset.change(_check_missing, [preset], [missing_html])
 
-            def _run(preset_name, pr, sd):
-                p = get_preset(preset_name) or {}
-                if missing_assets(p):
+            def _run(preset_name, text_prompt, seed_value):
+                preset_data = get_preset(preset_name) or {}
+                if missing_assets(preset_data):
                     raise gr.Error("Preset assets missing. See Downloads tab.")
-                gen = BulletProofGenerator(p)
-                return gen.generate(pr, int(sd))
+                generator = BulletProofGenerator(preset_data)
+                return generator.generate(text_prompt, int(seed_value))
 
-            go.click(_run, [preset, prompt, seed], [out])
+            generate_btn.click(_run, [preset, prompt, seed], [out_img])
 
         with gr.Tab("Substitution"):
-            preset_dd = gr.Dropdown(
-                label="Preset",
-                choices=get_preset_names(),
-                info="Select preset for substitution",
-            )
-            char1 = gr.Image(
-                label="Identity Image (char1)",
-                type="pil",
-                info="Upload reference image for identity",
-            )
-            char2 = gr.Image(
-                label="Pose Image (char2)",
-                type="pil",
-                info="Upload pose image (OpenPose auto-extract if available)",
-            )
-            sprompt = gr.Textbox(
-                label="Prompt",
-                lines=2,
-                info="Extra description for substitution run",
-            )
-            id_strength = gr.Slider(
-                0.0,
-                1.0,
-                value=0.7,
-                step=0.05,
-                label="Identity Strength",
-                info="Blend ratio of identity image",
-            )
-            pose_strength = gr.Slider(
-                0.0,
-                2.0,
-                value=1.0,
-                step=0.05,
-                label="Pose Strength",
-                info="Strength of pose conditioning",
-            )
-            sseed = gr.Number(
-                label="Seed",
-                value=42,
-                precision=0,
-                info="Seed for deterministic substitution",
-            )
-            go2 = gr.Button("Generate Substitution", info="Run identity?pose substitution")
-            sub_out = gr.Image(label="Output")
+            preset_sub = gr.Dropdown(label="Preset", choices=get_preset_names(), info="Select preset for substitution")
+            identity_img = gr.Image(label="Identity Image (char1)", type="pil", info="Upload reference image for identity")
+            pose_img = gr.Image(label="Pose Image (char2)", type="pil", info="Upload pose image (OpenPose auto-extract if available)")
+            sub_prompt = gr.Textbox(label="Prompt", lines=2, info="Extra description for substitution run")
+            id_strength = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="Identity Strength", info="Blend ratio of identity image")
+            pose_strength = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Pose Strength", info="Strength of pose conditioning")
+            sub_seed = gr.Number(label="Seed", value=42, precision=0, info="Seed for deterministic substitution")
+            sub_btn = gr.Button("Generate Substitution", info="Run identity?pose substitution")
+            sub_output = gr.Image(label="Output")
 
-            def _run_sub(preset_name, i1, i2, pr, ids, poses, sd):
-                p = get_preset(preset_name) or {}
-                if missing_assets(p):
+            def _run_sub(preset_name, identity, pose, text_prompt, ids, poses, seed_value):
+                preset_data = get_preset(preset_name) or {}
+                if missing_assets(preset_data):
                     raise gr.Error("Preset assets missing. See Downloads tab.")
-                engine = SubstitutionEngine(p)
+                engine = SubstitutionEngine(preset_data)
                 return engine.run(
-                    char1_identity=i1,
-                    char2_pose=i2,
-                    prompt=pr,
+                    char1_identity=identity,
+                    char2_pose=pose,
+                    prompt=text_prompt,
                     identity_strength=float(ids or 0.0),
                     pose_strength=float(poses or 0.0),
-                    seed=int(sd or 0),
+                    seed=int(seed_value or 0),
                 )
 
-            go2.click(
+            sub_btn.click(
                 _run_sub,
-                [preset_dd, char1, char2, sprompt, id_strength, pose_strength, sseed],
-                [sub_out],
+                [preset_sub, identity_img, pose_img, sub_prompt, id_strength, pose_strength, sub_seed],
+                [sub_output],
             )
 
         with gr.Tab("Pin Editor"):
-            preset_pin = gr.Dropdown(
-                label="Preset (optional)",
-                choices=get_preset_names(),
-                info="Use preset's base model for inpaint",
-            )
-            pin_base = gr.Image(
-                label="Base Image",
-                type="pil",
-                info="Image to edit with targeted pins",
-            )
-            pin_table = gr.Dataframe(
-                headers=["x", "y", "label", "prompt"],
-                row_count=(0, "dynamic"),
-                label="Pins Table",
-                interactive=True,
-            )
+            preset_pin = gr.Dropdown(label="Preset (optional)", choices=get_preset_names(), info="Use preset's base model for inpaint")
+            pin_base = gr.Image(label="Base Image", type="pil", info="Image to edit with targeted pins")
+            pin_table = gr.Dataframe(headers=["x", "y", "label", "prompt"], row_count=(0, "dynamic"), label="Pins Table", interactive=True)
             ref_img = gr.Image(label="Optional Reference Image", type="pil")
-            radius = gr.Slider(
-                8,
-                128,
-                value=32,
-                step=1,
-                label="Pin Radius",
-                info="Mask radius around each pin",
-            )
+            radius = gr.Slider(8, 128, value=32, step=1, label="Pin Radius", info="Mask radius around each pin")
             apply_btn = gr.Button("Apply Pin Edits", info="Run placeholder inpaint per pin")
-            out_gallery = gr.Gallery(label="Pin Edit Results", columns=3)
+            gallery = gr.Gallery(label="Pin Edit Results", columns=3)
 
-            def _apply(preset_name, base_img, rows, ref, r):
+            def _apply(preset_name, base_img, rows, ref_image, radius_value):
                 if base_img is None or not rows:
                     return []
                 pins = []
                 for row in rows:
                     try:
-                        x, y, label, pr = int(row[0]), int(row[1]), str(row[2]), str(row[3])
-                        pins.append(Pin(x, y, label or "pin", pr or "", ref))
+                        x, y, label, prompt_text = int(row[0]), int(row[1]), str(row[2]), str(row[3])
+                        pins.append(Pin(x, y, label or "pin", prompt_text or "", ref_image))
                     except Exception:
                         continue
-                def _editor_fn(img, mask, prompt_text, ref_img):  # placeholder
+
+                def _editor_fn(img, mask, prompt_text, ref):  # placeholder
                     return img
+
                 return list(apply_pin_edits(base_img, pins, _editor_fn).values())
 
-            apply_btn.click(
-                _apply,
-                [preset_pin, pin_base, pin_table, ref_img, radius],
-                [out_gallery],
-            )
+            apply_btn.click(_apply, [preset_pin, pin_base, pin_table, ref_img, radius], [gallery])
 
         with gr.Tab("Reference Gallery"):
             gr.Markdown("(Placeholder) Thumbnails grid. Click to load as reference.")
 
         with gr.Tab("Downloads"):
-            url_in = gr.Textbox(label="Model/LoRA URL", info="Direct download link")
-            file_in = gr.Textbox(label="Save As (filename)", info="File name to save under loras/")
-            size_in = gr.Number(label="Size (GB)", value=1.0, info="Approximate size for info only")
-            add_btn = gr.Button("Queue Download", info="Add to background download queue")
+            url = gr.Textbox(label="Model/LoRA URL", info="Direct download link")
+            filename = gr.Textbox(label="Save As (filename)", info="File name to save under loras/")
+            size = gr.Number(label="Size (GB)", value=1.0, info="Approximate size for info only")
+            queue_btn = gr.Button("Queue Download", info="Add to background download queue")
             status = gr.Textbox(label="Status", interactive=False)
 
-            def _queue(url, fname, size):
-                if not url or not fname:
+            def _queue(url_value, filename_value, size_value):
+                if not url_value or not filename_value:
                     return "Invalid input"
-                dl.add(url, fname, float(size or 0.0))
+                dl.add(url_value, filename_value, float(size_value or 0.0))
                 dl.run_async()
-                return f"Queued {fname} ({size} GB)"
+                return f"Queued {filename_value} ({size_value} GB)"
 
-            add_btn.click(_queue, [url_in, file_in, size_in], [status])
+            queue_btn.click(_queue, [url, filename, size], [status])
 
     return demo
 
 
-if __name__ == "__main__":
+def build_app() -> gr.Blocks:
+    configure_logging()
     demo = build_ui()
     try:
         from chargen.ui_guard import check_ui
 
         for issue in check_ui(demo):
             print(issue)
-    except Exception as exc:  # pragma: no cover - optional guard
+    except Exception as exc:  # pragma: no cover
         print("[UI] Drift check skipped:", exc)
-    demo.launch(server_name=os.getenv("PCS_SERVER_NAME", "127.0.0.1"), server_port=int(os.getenv("PCS_PORT", "7860")))
+    return demo
+
+
+if __name__ == "__main__":
+    app = build_app()
+    server_name = os.getenv("PCS_SERVER_NAME", "127.0.0.1")
+    port = _pick_port(server_name)
+    open_browser = os.getenv("PCS_OPEN_BROWSER", "0").lower() in {"1", "true", "yes", "on"}
+    app.launch(
+        share=False,
+        inbrowser=open_browser,
+        server_name=server_name,
+        server_port=port,
+        show_error=True,
+    )
