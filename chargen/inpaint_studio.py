@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Callable
@@ -10,9 +11,36 @@ from typing import Callable
 import gradio as gr
 from PIL import Image
 
+from tools.device import pick_device
+
 from .inpaint import inpaint
 from .metadata import save_metadata
 from .reference_gallery import list_gallery as _list_gallery, save_to_gallery
+
+try:  # pragma: no cover - optional logging configuration helper
+    from chargen.logging_config import configure_logging
+except Exception:  # pragma: no cover - logging config is optional
+    configure_logging = None  # type: ignore[assignment]
+
+
+logger = logging.getLogger(__name__)
+
+
+_DEVICE_LOGGED = False
+
+
+def _log_device_once() -> None:
+    global _DEVICE_LOGGED
+    if _DEVICE_LOGGED:
+        return
+    try:
+        device = pick_device()
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.warning("PixStu Studio device detection failed: %s", exc)
+        _DEVICE_LOGGED = True
+        return
+    logger.info("PixStu Studio selected device: %s", device)
+    _DEVICE_LOGGED = True
 
 try:  # pragma: no cover - optional dependency for downloads
     from tools.downloads import download_lora, resolve_missing_loras
@@ -120,6 +148,12 @@ RETRO_THEME = {"primary_hue": "purple", "secondary_hue": "cyan", "neutral_hue": 
 
 
 def studio() -> gr.Blocks:
+    if configure_logging is not None:
+        try:  # pragma: no cover - depends on runtime environment
+            configure_logging()
+        except Exception as exc:  # pragma: no cover - defensive logging
+            logger.debug("PixStu Studio logging setup skipped: %s", exc)
+    _log_device_once()
     with gr.Blocks(
         theme=RETRO_THEME,
         css="""
