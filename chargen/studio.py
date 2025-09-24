@@ -9,6 +9,7 @@ from chargen.generator import BulletProofGenerator
 from chargen.pin_editor import Pin
 from chargen.presets import get_preset, get_preset_names, missing_assets
 from chargen.substitution import SubstitutionEngine
+from chargen.reference_gallery import list_gallery, save_to_gallery
 # Animation imports
 from chargen.txt2gif import txt2gif
 from chargen.img2gif import img2gif
@@ -18,6 +19,14 @@ from chargen.txt2vid_wan import txt2vid_wan_guarded
 from chargen.wan_install import ensure_wan22_installed
 
 RETRO_CSS = ":root { --accent: #44e0ff; } body { font-family: 'Press Start 2P', monospace; background: #0a0a0f; color: #e6e6f0; } .gr-button{border-radius:16px;}"
+
+
+def _save_output_to_gallery(image, prompt):
+    try:
+        save_to_gallery(image, label=prompt)
+    except ValueError as exc:
+        raise gr.Error(str(exc))
+    return list_gallery()
 
 
 def _preset_to_lora_rows(preset: dict | None) -> list[list[object]]:
@@ -252,9 +261,15 @@ def build_ui():
             )
             download_btn = gr.Button("Download Missing Assets")
             lora_quick_btn = gr.Button("Quick Render Selected LoRA")
-            lora_quick_out = gr.Image(label="LoRA Quick Preview")
+            lora_quick_out = gr.Image(label="LoRA Quick Preview", type="pil")
             go = gr.Button("Generate", variant="primary")
-            out = gr.Image(label="Output")
+            out = gr.Image(label="Output", type="pil")
+            save_btn = gr.Button("Save to Gallery")
+            gallery = gr.Gallery(
+                label="Reference Gallery",
+                value=list_gallery(),
+                columns=4,
+            )
 
             preset.change(_auto_download_on_select, [preset], [lora_info, asset_status])
             download_btn.click(_auto_download_assets, [preset], [asset_status])
@@ -285,6 +300,7 @@ def build_ui():
                 return _quick_render(preset_name, row[0], row[1])
 
             go.click(_run, [preset, prompt, seed, lora_info], [out])
+            save_btn.click(_save_output_to_gallery, [out, prompt], [gallery])
             lora_quick_btn.click(_run_quick, [preset, lora_info], [lora_quick_out])
 
         with gr.Tab("Substitution"):
