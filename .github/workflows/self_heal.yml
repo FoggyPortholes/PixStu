@@ -1,0 +1,31 @@
+name: PixStu Self-Healing
+on: { pull_request: { branches: [ main ] }, workflow_dispatch: {} }
+jobs:
+  self_heal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.10" }
+      - name: Install deps
+        run: pip install pillow gradio diffusers torch huggingface_hub
+      - name: Run self-heal demos
+        run: |
+          python - <<'PY'
+          from tools.self_heal import self_heal
+          @self_heal("demo_missing_asset")
+          def f1():
+              raise RuntimeError("Missing assets: western_cartoon.safetensors")
+          try: f1()
+          except Exception as e: print("[ok] missing asset handled:", e)
+          @self_heal("demo_dtype")
+          def f2(dtype=None):
+              raise RuntimeError("fp16 unsupported on device")
+          try: f2()
+          except Exception as e: print("[ok] dtype handled:", e)
+          @self_heal("demo_sqlite")
+          def f3():
+              import sqlite3; raise sqlite3.DatabaseError("database disk image is malformed")
+          try: f3()
+          except Exception as e: print("[ok] sqlite handled:", e)
+          PY

@@ -4,6 +4,11 @@
 - Multi-LoRA blending UI ✅
 - Persistent Cache v2 ✅
 - Gallery cleanup & integration tests ✅
+- LoRA downloads helper + auto-fetch option ✅
+- Retro-modern 16-bit UI styling pass ✅
+- Cache self-healing + CLI utilities ✅
+- Global self-healing decorators ✅
+- CI smoke + self-heal workflows ✅
 
 ## Lessons Learned
 - Persisting user-specific data under `.pixstu/` keeps the repo clean while
@@ -15,6 +20,6 @@
   execution time and regression protection.
 
 ## Self-Note
-Remember to revisit the LoRA blend UI once we have feedback from artists; they
-may want presets scoped per character type. Also verify that cache eviction
-remains tuned once real assets are exercised on slower disks.
+Monitor LoRA registry growth—consider surfacing size estimates before download
+and optionally exposing per-character presets once artists weigh in. Revisit
+cache TTL defaults after gathering telemetry from slower disks.

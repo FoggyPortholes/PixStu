@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import inspect
 from pathlib import Path
 from typing import Iterable
 
@@ -29,6 +30,23 @@ PIXSTU_AUTO_DOWNLOAD = os.environ.get("PIXSTU_AUTO_DOWNLOAD", "0").lower() in (
     "yes",
     "on",
 )
+
+
+_INFO_SUPPORT_CACHE: dict[type, bool] = {}
+
+
+def _info_kwargs(component_cls: type, text: str) -> dict[str, str]:
+    try:
+        supported = _INFO_SUPPORT_CACHE.get(component_cls)
+        if supported is None:
+            sig = inspect.signature(component_cls.__init__)
+            supported = "info" in sig.parameters
+            _INFO_SUPPORT_CACHE[component_cls] = supported
+        if supported:
+            return {"info": text}
+    except Exception:
+        pass
+    return {}
 
 
 def _missing_assets_message(missing: list[str]) -> str:
@@ -143,10 +161,11 @@ def build_ui() -> gr.Blocks:
             preset = gr.Dropdown(
                 label="Preset",
                 choices=get_preset_names(),
-                info="Select style/model preset",
+                **_info_kwargs(gr.Dropdown, "Select style/model preset"),
             )
             prompt = gr.Textbox(
-                label="Prompt", info="Describe the character, pose, or action"
+                label="Prompt",
+                **_info_kwargs(gr.Textbox, "Describe the character, pose, or action"),
             )
 
 
@@ -154,22 +173,22 @@ def build_ui() -> gr.Blocks:
             preset_sub = gr.Dropdown(
                 label="Preset",
                 choices=get_preset_names(),
-                info="Select preset for substitution",
+                **_info_kwargs(gr.Dropdown, "Select preset for substitution"),
             )
             identity_img = gr.Image(
                 label="Identity Image (char1)",
                 type="pil",
-                info="Upload reference image for identity",
+                **_info_kwargs(gr.Image, "Upload reference image for identity"),
             )
             pose_img = gr.Image(
                 label="Pose Image (char2)",
                 type="pil",
-                info="Upload pose image (OpenPose auto-extract if available)",
+                **_info_kwargs(gr.Image, "Upload pose image (OpenPose auto-extract if available)"),
             )
             sub_prompt = gr.Textbox(
                 label="Prompt",
                 lines=2,
-                info="Extra description for substitution run",
+                **_info_kwargs(gr.Textbox, "Extra description for substitution run"),
             )
             id_strength = gr.Slider(
                 0.0,
@@ -177,7 +196,7 @@ def build_ui() -> gr.Blocks:
                 value=0.7,
                 step=0.05,
                 label="Identity Strength",
-                info="Blend ratio of identity image",
+                **_info_kwargs(gr.Slider, "Blend ratio of identity image"),
             )
             pose_strength = gr.Slider(
                 0.0,
@@ -185,16 +204,17 @@ def build_ui() -> gr.Blocks:
                 value=1.0,
                 step=0.05,
                 label="Pose Strength",
-                info="Strength of pose conditioning",
+                **_info_kwargs(gr.Slider, "Strength of pose conditioning"),
             )
             sub_seed = gr.Number(
                 label="Seed",
                 value=42,
                 precision=0,
-                info="Seed for deterministic substitution",
+                **_info_kwargs(gr.Number, "Seed for deterministic substitution"),
             )
             sub_btn = gr.Button(
-                "Generate Substitution", info="Run identity→pose substitution"
+                "Generate Substitution",
+                **_info_kwargs(gr.Button, "Run identity→pose substitution"),
             )
             sub_output = gr.Image(label="Output")
 
@@ -240,12 +260,12 @@ def build_ui() -> gr.Blocks:
             preset_pin = gr.Dropdown(
                 label="Preset (optional)",
                 choices=get_preset_names(),
-                info="Use preset's base model for inpaint",
+                **_info_kwargs(gr.Dropdown, "Use preset's base model for inpaint"),
             )
             pin_base = gr.Image(
                 label="Base Image",
                 type="pil",
-                info="Image to edit with targeted pins",
+                **_info_kwargs(gr.Image, "Image to edit with targeted pins"),
             )
             pin_table = gr.Dataframe(
                 headers=["x", "y", "label", "prompt"],
@@ -260,10 +280,11 @@ def build_ui() -> gr.Blocks:
                 value=32,
                 step=1,
                 label="Pin Radius",
-                info="Mask radius around each pin",
+                **_info_kwargs(gr.Slider, "Mask radius around each pin"),
             )
             apply_btn = gr.Button(
-                "Apply Pin Edits", info="Run placeholder inpaint per pin"
+                "Apply Pin Edits",
+                **_info_kwargs(gr.Button, "Run placeholder inpaint per pin"),
             )
             gallery = gr.Gallery(label="Pin Edit Results", columns=3)
 
