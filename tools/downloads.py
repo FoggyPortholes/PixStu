@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 import shutil
 
 try:
@@ -21,21 +21,37 @@ def ensure_hf():
     if hf_hub_download is None:
         raise RuntimeError("huggingface_hub not installed. pip install huggingface_hub")
 
-def have_lora(filename: str) -> bool:
-    return (LORAS_DIR / filename).exists()
+PathLike = Union[str, Path]
 
-def download_lora(filename: str, repo_id: Optional[str] = None, repo_filename: Optional[str] = None) -> str:
+
+def _normalise_path(filename: PathLike) -> Path:
+    return LORAS_DIR / Path(filename).name
+
+
+def have_lora(filename: PathLike) -> bool:
+    return _normalise_path(filename).exists()
+
+def download_lora(
+    filename: PathLike,
+    repo_id: Optional[str] = None,
+    repo_filename: Optional[str] = None,
+) -> str:
+    filename = Path(filename)
     ensure_hf()
     if have_lora(filename):
-        return str(LORAS_DIR / filename)
+        return str(_normalise_path(filename))
     if repo_id is None or repo_filename is None:
-        if filename not in KNOWN_LORAS:
-            raise FileNotFoundError(f"No registry entry for {filename}.")
-        repo_id, repo_filename = KNOWN_LORAS[filename]
+        key = filename.name
+        if repo_id is None and repo_filename is None:
+            if key not in KNOWN_LORAS:
+                raise FileNotFoundError(f"No registry entry for {key}.")
+            repo_id, repo_filename = KNOWN_LORAS[key]
+        else:
+            repo_filename = repo_filename or key
     tmp_path = hf_hub_download(repo_id=repo_id, filename=repo_filename)
-    dest = LORAS_DIR / filename
+    dest = _normalise_path(filename)
     shutil.copy2(tmp_path, dest)
     return str(dest)
 
-def resolve_missing_loras(filenames: list[str]) -> list[str]:
-    return [f for f in filenames if not have_lora(f)]
+def resolve_missing_loras(filenames: list[PathLike]) -> list[str]:
+    return [str(Path(f)) for f in filenames if not have_lora(f)]
