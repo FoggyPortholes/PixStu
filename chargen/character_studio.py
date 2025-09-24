@@ -30,7 +30,7 @@ def build_ui():
                 miss = missing_assets(preset_data)
                 if not miss:
                     return gr.update(visible=False, value="")
-                items = [f"<li>{os.path.basename(m['path'])} — ~{m['size_gb']} GB</li>" for m in miss if m.get('path')]
+                items = [f"<li>{os.path.basename(m['path'])}  ~{m['size_gb']} GB</li>" for m in miss if m.get('path')]
                 html = (
                     "<b>Missing assets:</b><ul>"
                     + "".join(items)
@@ -138,4 +138,7 @@ if __name__ == "__main__":
             print(warning)
     except Exception as exc:  # pragma: no cover
         print("[UI] Drift check skipped:", exc)
+    from tools.device import pick_device
+
+    print(f"[PixStu] Using device: {pick_device()}")
     demo.launch(server_name=os.getenv("PCS_SERVER_NAME", "127.0.0.1"), server_port=int(os.getenv("PCS_PORT", "7860")))

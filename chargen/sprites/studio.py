@@ -124,6 +124,9 @@ __all__ = ["demo"]
 
 
 if __name__ == "__main__":  # pragma: no cover - convenience launch
+    from tools.device import pick_device
+
+    print(f"[PixStu] Using device: {pick_device()}")
     demo.launch(
         share=False,
         inbrowser=True,

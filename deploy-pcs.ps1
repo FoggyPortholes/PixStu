@@ -1,4 +1,4 @@
-# deploy-pcs.ps1 (Teams-safe) — minimal portable app (CPU by default)
+# deploy-pcs.ps1 (Teams-safe) â€” minimal portable app (CPU by default)
 $ErrorActionPreference = "Stop"
 $root = Get-Location
 
@@ -45,9 +45,11 @@ Set-Content -Encoding UTF8 -Path (Join-Path $root "configs\curated_models.json")
 $runpy = @'
 import os
 from chargen.studio import build_app
+from tools.device import pick_device
 
 port = int(os.getenv("PCS_PORT", "7860"))
 demo = build_app()
+print(f"[PixStu] Using device: {pick_device()}")
 demo.launch(share=False, inbrowser=True, server_name="127.0.0.1", server_port=port, show_error=True)
 '@
 Set-Content -Encoding UTF8 -Path (Join-Path $root "run_pcs.py") -Value $runpy
@@ -252,6 +254,9 @@ if __name__ == "__main__":
     port = int(os.getenv("PCS_PORT","7860"))
     os.environ["HF_HOME"] = os.path.join(PROJ, "hf_cache")
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+    from tools.device import pick_device
+
+    print(f"[PixStu] Using device: {pick_device()}")
     demo.launch(share=False, inbrowser=True, server_name="127.0.0.1", server_port=port, show_error=True)
 '@
 Set-Content -Encoding UTF8 -Path (Join-Path $root "app\pixel_char_studio.py") -Value $app
