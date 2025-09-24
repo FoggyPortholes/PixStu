@@ -86,3 +86,14 @@ def test_summarise_install_failure_handles_debug_code_placeholder():
 
     assert "debug code" in message.lower()
     assert "verbose" in message.lower()
+
+
+def test_summarise_install_failure_handles_dependency_conflicts():
+    output = (
+        "ERROR: Cannot install wan22 and torch==2.1.0 because these package versions have conflicting dependencies."
+    )
+
+    message = wan_install._summarise_install_failure(output)  # noqa: SLF001 - testing helper
+
+    assert "conflict" in message.lower()
+    assert "dependency" in message.lower()

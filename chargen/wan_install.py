@@ -74,6 +74,16 @@ def _summarise_install_failure(output: str) -> str:
                 "trust store or proxy configuration."
             )
 
+        if (
+            "conflict" in lower
+            and ("dependency" in lower or "dependencies" in lower)
+        ) or "resolutionimpossible" in lower:
+            return (
+                "pip detected dependency conflicts while installing Wan2.2. "
+                "Resolve the conflicting package requirements (for example, by "
+                "adjusting versions or using a fresh environment) and retry."
+            )
+
         if "python" in lower and "(you have" in lower:
             version_match = re.search(
                 r"python\s+([0-9.]+)\s*\(you have\s*([0-9.]+)\)",
