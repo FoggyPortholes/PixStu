@@ -13,6 +13,8 @@ import inspect
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional, Tuple
 
+from .wan_install import ensure_wan22_installed
+
 WanResult = Tuple[Optional[str], str]
 
 
@@ -52,10 +54,28 @@ def txt2vid_wan_guarded(
     generation is not available.
     """
 
+    install_note: Optional[str] = None
+
+    def _with_install_note(result: WanResult) -> WanResult:
+        path, status = result
+        if install_note:
+            status = f"{status}\n{install_note}"
+        return path, status
+
     try:
         wan_module = importlib.import_module("wan22")
     except ModuleNotFoundError:
-        return None, "[Wan2.2] Package not installed. Use the installer tab."
+        available, message, installed_now = ensure_wan22_installed()
+        if not available:
+            return _with_install_note((None, f"[Wan2.2] {message}"))
+        if installed_now:
+            install_note = f"[Wan2.2] {message}"
+        try:
+            wan_module = importlib.import_module("wan22")
+        except Exception as exc:  # pragma: no cover - runtime failures
+            return _with_install_note((None, f"[Wan2.2] import failed after installation: {exc}"))
+    except Exception as exc:  # pragma: no cover - runtime failures
+        return _with_install_note((None, f"[Wan2.2] import failed: {exc}"))
 
     kwargs = dict(
         prompt=prompt,
@@ -73,11 +93,13 @@ def txt2vid_wan_guarded(
         candidate = getattr(wan_module, attr, None)
         if callable(candidate):
             try:
-                return _normalise_output(_invoke_with_supported_kwargs(candidate, **kwargs))
+                return _with_install_note(
+                    _normalise_output(_invoke_with_supported_kwargs(candidate, **kwargs))
+                )
             except TypeError:
                 continue
             except Exception as exc:  # pragma: no cover - vendor specific errors
-                return None, f"[Wan2.2] Generation failed: {exc}"
+                return _with_install_note((None, f"[Wan2.2] Generation failed: {exc}"))
 
     # Fall back to pipeline-style APIs
     for attr in ("WanVideoPipeline", "Wan22Pipeline"):
@@ -87,19 +109,21 @@ def txt2vid_wan_guarded(
         try:
             pipeline = pipeline_cls()
         except Exception as exc:  # pragma: no cover - vendor specific errors
-            return None, f"[Wan2.2] Pipeline initialisation failed: {exc}"
+            return _with_install_note((None, f"[Wan2.2] Pipeline initialisation failed: {exc}"))
         for method in ("generate", "txt2vid", "__call__"):
             candidate = getattr(pipeline, method, None)
             if not callable(candidate):
                 continue
             try:
-                return _normalise_output(_invoke_with_supported_kwargs(candidate, **kwargs))
+                return _with_install_note(
+                    _normalise_output(_invoke_with_supported_kwargs(candidate, **kwargs))
+                )
             except TypeError:
                 continue
             except Exception as exc:  # pragma: no cover - vendor specific errors
-                return None, f"[Wan2.2] Generation failed: {exc}"
+                return _with_install_note((None, f"[Wan2.2] Generation failed: {exc}"))
 
-    return None, "[Wan2.2] Installed but compatible generator not found."
+    return _with_install_note((None, "[Wan2.2] Installed but compatible generator not found."))
 
 
 __all__ = ["txt2vid_wan_guarded"]
