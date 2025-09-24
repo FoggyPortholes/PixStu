@@ -185,7 +185,7 @@ def studio(on_inpaint: Callable | None = None) -> gr.Blocks:
             no_safety = gr.Checkbox(label="Disable Safety Checker", elem_classes="retro-check")
             run_btn = gr.Button("▶️ Run Inpaint", elem_classes="retro-btn")
             out = gr.Image(label="Output", elem_classes="retro-output")
-            gallery = gr.Gallery(label="Reference Gallery").style(grid=[4], height="auto")
+            gallery = gr.Gallery(label="Reference Gallery", columns=4, height="auto")
             run_btn.click(
                 inpaint_cb,
                 inputs=[prompt, init, mask, steps, scale, seed, no_safety],
@@ -194,7 +194,7 @@ def studio(on_inpaint: Callable | None = None) -> gr.Blocks:
 
         with gr.Tab("🖼️ Gallery"):
             gr.Markdown("## 🕹️ Reference Gallery")
-            gallery = gr.Gallery(value=[]).style(grid=[6], height="auto")
+            gallery = gr.Gallery(value=[], columns=6, height="auto")
             refresh = gr.Button("🔄 Refresh", elem_classes="retro-btn")
             refresh.click(lambda: [], outputs=gallery)
 
