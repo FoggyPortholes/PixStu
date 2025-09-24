@@ -38,6 +38,8 @@ def _install_xformers_noise_filter() -> None:
 import torch
 from PIL import Image
 
+from tools.device import pick_device
+
 
 if not torch.cuda.is_available():  # pragma: no cover - depends on hardware
     _install_xformers_noise_filter()
@@ -47,28 +49,6 @@ try:
     from diffusers import StableDiffusionXLPipeline, StableDiffusionXLControlNetPipeline
 except Exception:  # pragma: no cover - optional dependency fallback
     StableDiffusionXLPipeline = StableDiffusionXLControlNetPipeline = None  # type: ignore
-
-
-def _detect_device() -> str:
-    if torch.cuda.is_available():
-        return "cuda"
-    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
-        return "mps"
-    try:  # AMD via ZLUDA
-        import zluda  # type: ignore  # pragma: no cover
-
-        return "cuda"
-    except Exception:  # pragma: no cover - optional
-        pass
-    try:  # Intel via zkluda
-        import zkluda  # type: ignore  # pragma: no cover
-
-        return "cuda"
-    except Exception:  # pragma: no cover - optional
-        pass
-    return "cpu"
-
-
 def _enable_xformers_if_safe(pipe: object) -> None:
     """Attempt to enable xFormers attention while silencing noisy warnings."""
 
@@ -102,11 +82,11 @@ class BulletProofGenerator:
 
     def __init__(self, preset: dict):
         self.preset = preset or {}
-        self.device = _detect_device()
-        if self.device != "cuda":
+        self.device = pick_device()
+        if self.device.type != "cuda":
             _install_xformers_noise_filter()
         model_id = self.preset.get("model", "stabilityai/stable-diffusion-xl-base-1.0")
-        dtype = getattr(torch, "float16", None) if self.device == "cuda" else getattr(torch, "float32", None)
+        dtype = getattr(torch, "float16", None) if self.device.type == "cuda" else getattr(torch, "float32", None)
         pipeline_cls = StableDiffusionXLPipeline
         if self.preset.get("controlnets") and StableDiffusionXLControlNetPipeline is not None:
             pipeline_cls = StableDiffusionXLControlNetPipeline
@@ -124,7 +104,7 @@ class BulletProofGenerator:
             self.pipe = self.pipe.to(self.device)
 
         # Speed options
-        if self.device == "cuda":
+        if self.device.type == "cuda":
             _enable_xformers_if_safe(self.pipe)
             try:
                 if hasattr(torch, "compile") and hasattr(self.pipe, "unet"):
@@ -152,7 +132,7 @@ class BulletProofGenerator:
                 logger.warning("LoRA load failed (%s): %s", path, exc)
 
     def generate(self, prompt: str, seed: int = 42) -> Image.Image:
-        generator = torch.Generator(self.device).manual_seed(int(seed))
+        generator = torch.Generator(device=self.device).manual_seed(int(seed))
         positive_terms = list(self.preset.get("positive", []))
         negative_terms = set(self.preset.get("negative", []))
         negative_terms.update({"duplicate", "text", "caption", "speech bubble", "watermark", "logo"})
