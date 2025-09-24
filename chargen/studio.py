@@ -41,14 +41,57 @@ def _preset_to_lora_rows(preset: dict | None) -> list[list[object]]:
     return rows
 
 
-def _apply_lora_overrides(preset: dict, overrides: Iterable[Iterable[object]]) -> None:
+def _coerce_override_rows(overrides: object) -> list[list[object]]:
+    """Normalize override data from ``gr.Dataframe`` callbacks."""
+
+    if overrides is None:
+        return []
+
+    # Handle pandas DataFrame-like objects without relying on the import.
+    if hasattr(overrides, "empty"):
+        try:
+            if overrides.empty:  # type: ignore[attr-defined]
+                return []
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    if hasattr(overrides, "to_numpy"):
+        try:
+            return overrides.to_numpy().tolist()  # type: ignore[call-arg,attr-defined]
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    if hasattr(overrides, "tolist"):
+        try:
+            rows = overrides.tolist()  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover - defensive
+            pass
+        else:
+            if isinstance(rows, list):
+                return rows
+
+    try:
+        rows = list(overrides)  # type: ignore[arg-type]
+    except TypeError:
+        return []
+
+    if rows and not isinstance(rows[0], (list, tuple)):
+        return [list(rows)]
+    return [list(row) for row in rows]
+
+
+def _apply_lora_overrides(preset: dict, overrides: Iterable[Iterable[object]] | object) -> None:
     """Apply LoRA weight overrides coming from the interactive table."""
 
-    if not preset or not overrides:
+    if not preset:
+        return
+
+    rows = _coerce_override_rows(overrides)
+    if not rows:
         return
 
     override_map: dict[str, float] = {}
-    for row in overrides:
+    for row in rows:
         if not row:
             continue
         path = row[0]
@@ -260,9 +303,10 @@ def build_ui():
                 return gen.generate(pr, seed=seed_val)
 
             def _run_quick(preset_name, loras_override):
-                if not loras_override:
+                rows = _coerce_override_rows(loras_override)
+                if not rows:
                     raise gr.Error("No LoRA selected")
-                row = loras_override[0]
+                row = rows[0]
                 return _quick_render(preset_name, row[0], row[1])
 
             go.click(_run, [preset, prompt, seed, lora_info], [out])
@@ -302,9 +346,10 @@ def build_ui():
                 return eng.run(i1, i2, pr)
 
             def _run_quick_sub(preset_name, loras_override):
-                if not loras_override:
+                rows = _coerce_override_rows(loras_override)
+                if not rows:
                     raise gr.Error("No LoRA selected")
-                row = loras_override[0]
+                row = rows[0]
                 return _quick_render(preset_name, row[0], row[1])
 
             go2.click(_run_sub, [preset_dd, char1, char2, sprompt, lora_info_sub], [sub_out])
@@ -341,9 +386,10 @@ def build_ui():
                 return [base_img]
 
             def _run_quick_pin(preset_name, loras_override):
-                if not loras_override:
+                rows = _coerce_override_rows(loras_override)
+                if not rows:
                     raise gr.Error("No LoRA selected")
-                row = loras_override[0]
+                row = rows[0]
                 return _quick_render(preset_name, row[0], row[1])
 
             apply_btn.click(_apply, [pin_base, pin_table], [out_gallery])
