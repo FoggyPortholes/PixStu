@@ -1,5 +1,6 @@
-"""CharGen Studio core package."""
-
-from .studio import build_ui
-
-__all__ = ["build_ui"]
+"""
+PixStu chargen package
+- Keep this file side-effect free.
+- Do NOT import submodules (e.g. studio) here.
+"""
+__all__ = []
