@@ -1,0 +1,13 @@
+name: Successor Note Gate
+on:
+  pull_request:
+    branches: [ main ]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate successor note presence
+        run: test -f docs/successor/SUCCESSOR_NOTE_CURRENT.md
+      - name: Enforce drift check
+        run: python tools/check_successor_note.py
