@@ -11,6 +11,8 @@ import gradio as gr
 
 from chargen.generator import BulletProofGenerator
 from chargen.presets import get_preset, missing_assets
+from chargen.reference_gallery import list_gallery as _list_gallery, save_to_gallery
+from . import inpaint
 
 try:  # pragma: no cover - optional dependency for downloads
     from tools.downloads import download_lora, resolve_missing_loras, KNOWN_LORAS
@@ -77,6 +79,34 @@ def _stub(*_args, **_kwargs):  # pragma: no cover - UI placeholder
     return None
 
 
+def _save_output_to_gallery(image, label: str | None = None) -> list[str]:
+    """Persist ``image`` to the gallery and return the updated listing."""
+
+    saved_path = save_to_gallery(image, label)
+    gallery = list(_list_gallery())
+    if saved_path not in gallery:
+        gallery.insert(0, saved_path)
+    return gallery
+
+
+def _run_inpaint(prompt, init_img, mask_img, steps, scale, seed, no_safety):
+    if not prompt or not init_img or not mask_img:
+        raise gr.Error("Prompt, Init, and Mask required.")
+
+    result = inpaint.inpaint_region(
+        init_image=init_img,
+        mask_image=mask_img,
+        prompt=str(prompt),
+        steps=int(steps or inpaint.DEFAULT_STEPS),
+        guidance_scale=float(scale or inpaint.DEFAULT_GUIDANCE_SCALE),
+        seed=int(seed) if seed not in (None, "") else None,
+        disable_safety_checker=bool(no_safety),
+    )
+
+    gallery = _save_output_to_gallery(result, str(prompt))
+    return result, gallery
+
+
 def _missing_lora_filenames(entries: Iterable) -> list[str]:
     names: set[str] = set()
     for entry in entries:
@@ -140,7 +170,7 @@ def _quick_render(preset_name: str, lora_path: str, strength: float):
 def studio(on_inpaint: Callable | None = None) -> gr.Blocks:
     """Build the retro-modern PixStu studio."""
 
-    inpaint_cb = on_inpaint or _stub
+    inpaint_cb = on_inpaint or _run_inpaint
 
     with gr.Blocks(
         theme=RETRO_THEME,
@@ -158,7 +188,11 @@ def studio(on_inpaint: Callable | None = None) -> gr.Blocks:
     ) as demo:
         with gr.Tab("🎨 Inpainting"):
             gr.Markdown("## 🕹️ Pixel Inpainting")
-            prompt = gr.Textbox(label="Prompt", elem_classes="retro-text")
+            prompt = gr.Textbox(
+                label="Prompt",
+                placeholder="Describe the edit…",
+                elem_classes="retro-text",
+            )
             init = gr.Image(type="filepath", label="Init Image", elem_classes="retro-img")
             mask = gr.Image(
                 type="filepath",
@@ -185,7 +219,9 @@ def studio(on_inpaint: Callable | None = None) -> gr.Blocks:
             no_safety = gr.Checkbox(label="Disable Safety Checker", elem_classes="retro-check")
             run_btn = gr.Button("▶️ Run Inpaint", elem_classes="retro-btn")
             out = gr.Image(label="Output", elem_classes="retro-output")
-            gallery = gr.Gallery(label="Reference Gallery").style(grid=[4], height="auto")
+            gallery = gr.Gallery(
+                label="Reference Gallery", value=_list_gallery()
+            ).style(grid=[4], height="auto")
             run_btn.click(
                 inpaint_cb,
                 inputs=[prompt, init, mask, steps, scale, seed, no_safety],
@@ -194,9 +230,9 @@ def studio(on_inpaint: Callable | None = None) -> gr.Blocks:
 
         with gr.Tab("🖼️ Gallery"):
             gr.Markdown("## 🕹️ Reference Gallery")
-            gallery = gr.Gallery(value=[]).style(grid=[6], height="auto")
+            gallery_tab = gr.Gallery(value=_list_gallery()).style(grid=[6], height="auto")
             refresh = gr.Button("🔄 Refresh", elem_classes="retro-btn")
-            refresh.click(lambda: [], outputs=gallery)
+            refresh.click(lambda: _list_gallery(), outputs=gallery_tab)
 
         with gr.Tab("📥 Downloads"):
             gr.Markdown("## 🕹️ Manage Assets")
@@ -260,5 +296,7 @@ __all__ = [
     "_scan_presets_for_loras",
     "_missing_lora_filenames",
     "_quick_render",
+    "_save_output_to_gallery",
+    "_run_inpaint",
 ]
 
