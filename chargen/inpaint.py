@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+from io import BytesIO
 from typing import Optional, Tuple
 
 import torch
@@ -14,11 +15,15 @@ try:  # pragma: no cover - optional dependency
 except Exception:  # pragma: no cover - optional dependency fallback
     StableDiffusionInpaintPipeline = None  # type: ignore
 
+from tools.cache import Cache
+from tools.cache_keys import inpaint_key
+
 logger = logging.getLogger(__name__)
 
 _PIPELINE_LOCK = threading.Lock()
 _PIPELINE: Optional[StableDiffusionInpaintPipeline] = None
 _PIPELINE_DEVICE: Optional[str] = None
+_CACHE = Cache(namespace="inpaint")
 
 
 def _detect_device() -> str:
@@ -141,10 +146,24 @@ def inpaint_region(
 
     pipe, _ = _ensure_pipeline()
 
-    source = _prepare_image(ref_img or base_img)
-    if source.size != base_img.size:
-        source = source.resize(base_img.size, Image.BICUBIC)
-    mask_image = _prepare_mask(mask, base_img.size)
+    base_processed = _prepare_image(base_img)
+    mask_image = _prepare_mask(mask, base_processed.size)
+    ref_processed = _prepare_image(ref_img, base_processed.size) if ref_img is not None else None
+    source = ref_processed or base_processed
+
+    cache_key = inpaint_key(
+        base_processed,
+        mask_image,
+        prompt or "",
+        guidance_scale=float(guidance_scale),
+        steps=int(steps),
+        ref_img=ref_processed,
+    )
+
+    cached = _CACHE.get(cache_key)
+    if cached:
+        with Image.open(BytesIO(cached)) as handle:
+            return handle.copy()
 
     try:
         result = pipe(
@@ -160,4 +179,13 @@ def inpaint_region(
     images = getattr(result, "images", None)
     if not images:
         raise RuntimeError("Inpainting pipeline returned no images")
-    return images[0]
+    final = images[0]
+
+    try:
+        buffer = BytesIO()
+        final.save(buffer, format="PNG")
+        _CACHE.set(cache_key, buffer.getvalue())
+    except Exception as exc:  # pragma: no cover - best-effort cache
+        logger.debug("Failed to persist inpaint cache entry: %s", exc)
+
+    return final

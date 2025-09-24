@@ -5,11 +5,12 @@ import gradio as gr
 from huggingface_hub import hf_hub_download
 from huggingface_hub import login as hf_login
 
+from chargen import lora_blend
 from chargen.generator import BulletProofGenerator
 from chargen.pin_editor import Pin
 from chargen.presets import get_preset, get_preset_names, missing_assets
 from chargen.substitution import SubstitutionEngine
-from chargen.reference_gallery import list_gallery, save_to_gallery
+from chargen.reference_gallery import cleanup_gallery, list_gallery, save_to_gallery
 # Animation imports
 from chargen.txt2gif import txt2gif
 from chargen.img2gif import img2gif
@@ -24,6 +25,7 @@ RETRO_CSS = ":root { --accent: #44e0ff; } body { font-family: 'Press Start 2P', 
 def _save_output_to_gallery(image, prompt):
     try:
         save_to_gallery(image, label=prompt)
+        cleanup_gallery()
     except ValueError as exc:
         raise gr.Error(str(exc))
     return list_gallery()
@@ -118,6 +120,13 @@ def _apply_lora_overrides(preset: dict, overrides: Iterable[Iterable[object]] | 
         display = entry.get("display_path") or entry.get("path")
         if display in override_map:
             entry["weight"] = override_map[display]
+
+
+def _apply_blend_rows(preset: dict, blend_rows: object) -> None:
+    try:
+        lora_blend.apply_blend(preset, blend_rows)
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
 
 
 def _asset_status_message(missing: List[dict]) -> str:
@@ -310,6 +319,25 @@ def build_ui():
                 interactive=True,
                 label="LoRAs",
             )
+            with gr.Accordion("LoRA Blends", open=False):
+                blend_selector = gr.Dropdown(
+                    label="Saved Blend",
+                    choices=lora_blend.list_sets(),
+                    allow_custom_value=False,
+                )
+                blend_rows = gr.Dataframe(
+                    headers=["LoRA Path", "Weight"],
+                    interactive=True,
+                    row_count=(lora_blend.MAX_LORAS, "dynamic"),
+                    col_count=(2, "fixed"),
+                    label="Blend Entries",
+                )
+                blend_name = gr.Textbox(label="Blend Name")
+                with gr.Row():
+                    blend_load = gr.Button("Load Blend")
+                    blend_save = gr.Button("Save Blend")
+                    blend_delete = gr.Button("Delete Blend")
+                blend_status = gr.Textbox(label="Blend Status", interactive=False)
             download_btn = gr.Button("Download Missing Assets")
             lora_quick_btn = gr.Button("Quick Render Selected LoRA")
             lora_quick_out = gr.Image(label="LoRA Quick Preview", type="pil")
@@ -325,12 +353,42 @@ def build_ui():
             preset.change(_auto_download_on_select, [preset], [lora_info, asset_status])
             download_btn.click(_auto_download_assets, [preset], [asset_status])
 
-            def _run(preset_name, pr, sd, loras_override):
+            def _refresh_blend_dropdown(selected: str | None = None):
+                choices = lora_blend.list_sets()
+                value = selected if selected in choices else None
+                return gr.update(choices=choices, value=value)
+
+            def _load_blend(name):
+                if not name:
+                    return gr.update(value=[]), "Select a blend to load."
+                rows = lora_blend.blend_to_rows(lora_blend.get_set(str(name)))
+                return gr.update(value=rows), f"Loaded blend '{name}'."
+
+            def _save_blend(name, rows):
+                try:
+                    lora_blend.save_set(name, rows)
+                except ValueError as exc:
+                    raise gr.Error(str(exc))
+                return _refresh_blend_dropdown(str(name)), f"Saved blend '{name}'."
+
+            def _delete_blend(name):
+                if not name:
+                    raise gr.Error("Select a blend to delete.")
+                lora_blend.delete_set(str(name))
+                return _refresh_blend_dropdown(None), f"Deleted blend '{name}'."
+
+            blend_selector.change(_load_blend, [blend_selector], [blend_rows, blend_status])
+            blend_load.click(_load_blend, [blend_selector], [blend_rows, blend_status])
+            blend_save.click(_save_blend, [blend_name, blend_rows], [blend_selector, blend_status])
+            blend_delete.click(_delete_blend, [blend_selector], [blend_selector, blend_status])
+
+            def _run(preset_name, pr, sd, loras_override, blend_rows_data):
                 preset_cfg = get_preset(preset_name)
                 if not preset_cfg:
                     raise gr.Error("Preset not found")
 
                 _apply_lora_overrides(preset_cfg, loras_override)
+                _apply_blend_rows(preset_cfg, blend_rows_data)
 
                 missing = missing_assets(preset_cfg)
                 if missing:
@@ -350,7 +408,7 @@ def build_ui():
                 row = rows[0]
                 return _quick_render(preset_name, row[0], row[1])
 
-            go.click(_run, [preset, prompt, seed, lora_info], [out])
+            go.click(_run, [preset, prompt, seed, lora_info, blend_rows], [out])
             save_btn.click(_save_output_to_gallery, [out, prompt], [gallery])
             lora_quick_btn.click(_run_quick, [preset, lora_info], [lora_quick_out])
 

@@ -1,0 +1,11 @@
+{
+  "cache": {
+    "max_bytes": 536870912,
+    "max_entries": 128,
+    "ttl_seconds": 604800
+  },
+  "gallery": {
+    "max_items": 24,
+    "ttl_days": 30
+  }
+}
