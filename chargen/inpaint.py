@@ -6,8 +6,9 @@ from __future__ import annotations
 import hashlib
 import os
 from contextlib import nullcontext
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 from PIL import Image, ImageOps
@@ -227,10 +228,61 @@ def inpaint_region(
     return generated
 
 
+def inpaint(
+    *,
+    prompt: str,
+    init_image: Image.Image | str | Path,
+    mask_image: Image.Image | str | Path,
+    guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
+    steps: int = DEFAULT_STEPS,
+    threshold: Optional[float] = None,
+    seed: Optional[int] = None,
+    model_id: Optional[str] = None,
+    disable_safety_checker: Optional[bool] = None,
+    use_cache: bool = True,
+) -> Tuple[Image.Image, Dict[str, object]]:
+    """Run an inpaint operation and return the resulting image and metadata."""
+
+    image = inpaint_region(
+        init_image=init_image,
+        mask_image=mask_image,
+        prompt=prompt,
+        guidance_scale=guidance_scale,
+        steps=steps,
+        threshold=threshold,
+        seed=seed,
+        model_id=model_id,
+        disable_safety_checker=disable_safety_checker,
+        use_cache=use_cache,
+    )
+
+    metadata: Dict[str, object] = {
+        "prompt": prompt,
+        "guidance_scale": float(guidance_scale),
+        "steps": int(steps),
+        "model_id": model_id or DEFAULT_MODEL,
+        "timestamp": datetime.utcnow().isoformat() + "Z",
+    }
+
+    if seed is not None:
+        metadata["seed"] = int(seed)
+    if threshold is not None:
+        metadata["threshold"] = float(threshold)
+    if disable_safety_checker is not None:
+        metadata["disable_safety_checker"] = bool(disable_safety_checker)
+    if isinstance(init_image, (str, Path)):
+        metadata["init_image"] = str(init_image)
+    if isinstance(mask_image, (str, Path)):
+        metadata["mask_image"] = str(mask_image)
+
+    return image, metadata
+
+
 __all__ = [
     "DEFAULT_GUIDANCE_SCALE",
     "DEFAULT_MODEL",
     "DEFAULT_STEPS",
+    "inpaint",
     "inpaint_region",
     "load_pipeline",
     "pick_device",
