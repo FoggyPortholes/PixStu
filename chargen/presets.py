@@ -1,28 +1,56 @@
-import json, os
+import json
+import os
+from copy import deepcopy
+from pathlib import Path
+from typing import Dict
 
 PRESET_FILE = os.path.join("configs", "curated_models.json")
 
+_CACHE: Dict[str, dict] | None = None
+_CACHE_MTIME: float | None = None
 
-def load_presets():
-    if not os.path.exists(PRESET_FILE):
-        raise FileNotFoundError(f"Missing preset file: {PRESET_FILE}")
-    with open(PRESET_FILE, "r", encoding="utf-8") as f:
-        data = json.load(f)
+
+def _read_presets_from_disk(path: Path) -> Dict[str, dict]:
+    if not path.exists():
+        raise FileNotFoundError(f"Missing preset file: {path}")
+    with path.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
     if isinstance(data, dict):
         presets = data.get("presets", [])
     elif isinstance(data, list):
         presets = data
     else:
         raise ValueError("Preset file must be a list or contain a 'presets' array")
-    return {p["name"]: p for p in presets}
+    return {preset["name"]: preset for preset in presets}
 
 
-def get_preset_names():
+def load_presets(*, force_reload: bool = False) -> Dict[str, dict]:
+    """Return cached preset mapping, reloading when the source file changes."""
+
+    global _CACHE, _CACHE_MTIME
+
+    path = Path(PRESET_FILE)
+    if force_reload:
+        _CACHE = None
+        _CACHE_MTIME = None
+
+    current_mtime = path.stat().st_mtime if path.exists() else None
+
+    if _CACHE is None or current_mtime != _CACHE_MTIME:
+        _CACHE = _read_presets_from_disk(path)
+        _CACHE_MTIME = current_mtime
+
+    # Return a defensive copy so callers can safely mutate the result.
+    return {name: deepcopy(payload) for name, payload in _CACHE.items()}
+
+
+def get_preset_names() -> list[str]:
     return list(load_presets().keys())
 
 
-def get_preset(name: str):
-    return load_presets().get(name)
+def get_preset(name: str) -> dict | None:
+    preset = load_presets().get(name)
+    return deepcopy(preset) if preset is not None else None
 
 
 def missing_assets(preset: dict):
