@@ -172,3 +172,15 @@ def test_refine_uses_img2img_pipeline(generator_env, tmp_path):
     assert call_inputs["guidance_scale"] == 4.5
     assert call_inputs["image"].size == (192, 192)
     assert gen.consume_warnings() == []
+
+def test_generate_reports_missing_lora(generator_env, tmp_path):
+    gen = generator_env.generator_module.CharacterGenerator(generator_env.preset)
+    generator_env.record.exists = False
+    generator_env.record.repo_id = None
+
+    out_path = Path(gen.generate("missing lora case", seed=5, size=64))
+    assert out_path.exists()
+
+    warnings = gen.consume_warnings()
+    assert warnings
+    assert any("skipped LoRA" in message for message in warnings)

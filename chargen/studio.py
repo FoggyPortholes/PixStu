@@ -9,7 +9,7 @@ from .logging_config import configure_logging
 def build_app() -> gr.Blocks:
     configure_logging()
     demo = build_ui()
-    print('[SELFTEST] Starting quick checks…')
+    print('[SELFTEST] Starting quick checks...')
     try:
         from .presets import get_preset_names
 

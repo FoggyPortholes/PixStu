@@ -62,6 +62,9 @@ def apply_edit(
         guidance=guidance,
         negative_prompt=negative_prompt,
     )
+    warnings = (
+        generator.consume_warnings() if hasattr(generator, "consume_warnings") else []
+    )
 
     metadata = {
         "prompt": prompt,
@@ -77,4 +80,5 @@ def apply_edit(
     return {
         "output_path": output_path,
         "metadata_path": meta_path,
+        "warnings": warnings,
     }

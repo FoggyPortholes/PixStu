@@ -15,7 +15,7 @@ CharGen Studio’s sole purpose is to use AI to **generate high-quality, consist
 
 The official codebase lives at: 👉 [FoggyPortholes/PixStu](https://github.com/FoggyPortholes/PixStu)
 
-This repo is the source of truth. All changes must align with the above **App Intent**. Legacy files currently present include `app/`, `run_pcs.py`, and legacy launch scripts. Migration to `chargen/` structure is required.
+This repo is the source of truth. All changes must align with the above **App Intent**. Legacy `app/` entrypoints have been removed; keep all new work aligned with the `chargen/` structure.
 
 ## Basic Structure (Post-Migration)
 
@@ -171,11 +171,11 @@ Each UI component must be verified manually and automatically.
 
 ## Migration Steps (Immutable)
 
-The repository still contains legacy `app/` and `run_pcs.py`. Migration to the new `chargen/` structure must be completed systematically. Steps:
+If you encounter an older clone that still contains legacy `app/` scripts, migrate it to the `chargen/` structure systematically:
 
-1. Copy `app/` → `chargen/` (preserve folder structure).
-2. Update imports: replace `from app` → `from chargen` across all files.
-3. Replace `import app` → `import chargen` where used.
+1. Copy `app/` -> `chargen/` (preserve folder structure) in the outdated clone.
+2. Update imports: replace `from app` with `from chargen` across all files.
+3. Replace `import app` with `import chargen` where used.
 4. Move entrypoint: deprecate `run_pcs.py`; replace with `chargen/studio.py`.
 5. Relocate preset config to `configs/curated_models.json`.
 6. Validate by running `python chargen/studio.py` and confirming UI integrity.

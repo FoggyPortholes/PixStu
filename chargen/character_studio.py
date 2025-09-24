@@ -97,6 +97,9 @@ def _stream_generation(
                 negative_prompt=negative_prompt,
                 **run_kwargs,
             )
+            warnings = (
+                generator.consume_warnings() if hasattr(generator, "consume_warnings") else []
+            )
             metadata = {
                 "prompt": augmented_prompt,
                 "preset": preset_name,
@@ -115,10 +118,13 @@ def _stream_generation(
                 final_image = None
 
             plugin_updates = manager.on_generation_complete(session, final_image, out_path, meta_path)
-            result_queue.put(("final", final_image or out_path, meta_path, plugin_updates))
+            result_queue.put(("final", final_image or out_path, meta_path, plugin_updates, warnings))
         except Exception as exc:
+            warnings = (
+                generator.consume_warnings() if hasattr(generator, "consume_warnings") else []
+            )
             plugin_updates = manager.on_error(session, str(exc))
-            result_queue.put(("error", str(exc), plugin_updates))
+            result_queue.put(("error", str(exc), plugin_updates, warnings))
         finally:
             result_queue.put(("done",))
 
@@ -133,7 +139,7 @@ def _stream_generation(
             yield (
                 gr.update(value=None),
                 gr.update(value=""),
-                gr.update(value="Preparing…"),
+                gr.update(value="Preparing..."),
                 *plugin_updates,
             )
         elif tag == "preview":
@@ -141,23 +147,36 @@ def _stream_generation(
             yield (
                 gr.update(),
                 gr.update(),
-                gr.update(value=f"Rendering… step {step_index + 1}/{total}"),
+                gr.update(value=f"Rendering... step {step_index + 1}/{total}"),
                 *plugin_updates,
             )
         elif tag == "final":
-            _tag, image_value, meta_path, plugin_updates = message
+            _tag, image_value, meta_path, plugin_updates, warnings = message
+            status_value = "Done"
+            if warnings:
+                bullet_list = "
+".join(f"- {warning}" for warning in warnings)
+                status_value = f"Done with warnings:
+{bullet_list}"
             yield (
                 gr.update(value=image_value),
                 gr.update(value=meta_path),
-                gr.update(value="Done"),
+                gr.update(value=status_value),
                 *plugin_updates,
             )
         elif tag == "error":
-            _tag, error_message, plugin_updates = message
+            _tag, error_message, plugin_updates, warnings = message
+            status_value = f"Error: {error_message}"
+            if warnings:
+                bullet_list = "
+".join(f"- {warning}" for warning in warnings)
+                status_value = f"{status_value}
+Warnings:
+{bullet_list}"
             yield (
                 gr.update(value=None),
                 gr.update(value=""),
-                gr.update(value=f"Error: {error_message}"),
+                gr.update(value=status_value),
                 *plugin_updates,
             )
         elif tag == "done":

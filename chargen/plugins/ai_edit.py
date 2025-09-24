@@ -71,9 +71,17 @@ class AIEditPlugin(Plugin):
                     auto_mask_enabled=bool(auto_mask),
                     target_region=target_region or "entire",
                 )
+                status = f"Edit applied. Saved to {result['output_path']}"
+                warnings = result.get("warnings") or []
+                if warnings:
+                    bullet_list = "
+".join(f"- {warning}" for warning in warnings)
+                    status = f"{status}
+Warnings:
+{bullet_list}"
                 return (
                     result["output_path"],
-                    f"Edit applied. Saved to {result['output_path']}",
+                    status,
                     result["metadata_path"],
                 )
             except Exception as exc:  # pragma: no cover - surface to UI

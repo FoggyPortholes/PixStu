@@ -69,5 +69,8 @@ class BulletProofGenerator:
         kwargs["negative_prompt"] = self._compose_negative(negative_prompt)
         return self._core.refine(**kwargs)
 
+    def consume_warnings(self) -> list[str]:
+        return self._core.consume_warnings()
+
     def __getattr__(self, item):
         return getattr(self._core, item)

@@ -1,7 +1,7 @@
 import logging
 import os
 import time
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from PIL import Image
 import torch
@@ -23,31 +23,41 @@ logger = logging.getLogger(__name__)
 class CharacterGenerator:
     def __init__(self, preset: dict):
         self.preset = preset or {}
-        self.dtype = torch.float16 if torch.cuda.is_available() else torch.float32
         if torch.cuda.is_available():
             self.device = "cuda"
+            self.dtype = torch.float16
         elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
             self.device = "mps"
+            self.dtype = torch.float32
         else:
             self.device = "cpu"
+            self.dtype = torch.float32
         self.txt2img = None
         self.img2img = None
         self._inpaint = None
+        self._warnings: List[str] = []
+
+    def _record_warning(self, message: str) -> None:
+        if message not in self._warnings:
+            logger.warning(message)
+            self._warnings.append(message)
 
     def _apply_loras(self, pipe):
         adapters = []
         weights = []
         lora_entries = self.preset.get("loras", [])
+        preset_name = self.preset.get("name", "Unnamed")
         for idx, entry in enumerate(lora_entries):
+            entry = dict(entry or {})
             raw_path = entry.get("local_path") or entry.get("path") or ""
-            record = model_setup.resolve_path(raw_path)
+            record = model_setup.resolve_path(raw_path) if raw_path else None
             if record is None and entry.get("name"):
                 record = model_setup.find_record(entry["name"])
             if record and not record.exists and entry.get("repo_id"):
                 logger.info(
                     "Downloading LoRA '%s' for preset '%s'.",
                     record.name,
-                    self.preset.get("name", "Unnamed"),
+                    preset_name,
                 )
                 logger.info(model_setup.download(record.name))
                 record = model_setup.resolve_path(record.path) or record
@@ -55,15 +65,20 @@ class CharacterGenerator:
                 logger.info(
                     "Attempting to download LoRA '%s' for preset '%s'.",
                     entry["name"],
-                    self.preset.get("name", "Unnamed"),
+                    preset_name,
                 )
                 logger.info(model_setup.download(entry["name"]))
                 record = model_setup.find_record(entry["name"])
             if record is None:
-                logger.warning("LoRA entry could not be resolved: %s", entry)
+                label = entry.get("name") or entry.get("path") or entry.get("local_path") or f"index {idx}"
+                self._record_warning(
+                    f"Preset '{preset_name}' skipped LoRA '{label}': unable to resolve path."
+                )
                 continue
             if not record.exists:
-                logger.warning("LoRA '%s' is not available locally.", record.name)
+                self._record_warning(
+                    f"Preset '{preset_name}' skipped LoRA '{record.name}': file not available locally."
+                )
                 continue
             local_path = record.local_path
             weight = float(entry.get("weight", 1.0))
@@ -73,7 +88,7 @@ class CharacterGenerator:
             try:
                 pipe.load_lora_weights(load_dir, adapter_name=adapter_name, weight_name=weight_name)
             except Exception as exc:
-                logger.warning("LoRA load failed for %s: %s", adapter_name, exc)
+                self._record_warning(f"Failed to load LoRA '{adapter_name}': {exc}")
                 continue
             adapters.append(adapter_name)
             weights.append(weight)
@@ -87,8 +102,19 @@ class CharacterGenerator:
                     else:
                         raise exc
                 except Exception as fuse_exc:
-                    logger.warning("Unable to set LoRA weights: %s", fuse_exc)
+                    self._record_warning(
+                        f"Unable to set LoRA weights for preset '{preset_name}': {fuse_exc}"
+                    )
+        elif lora_entries:
+            self._record_warning(
+                f"Preset '{preset_name}' has no usable LoRAs; generation will proceed without them."
+            )
         return pipe
+
+    def consume_warnings(self) -> List[str]:
+        warnings = list(self._warnings)
+        self._warnings.clear()
+        return warnings
 
     def _ensure_txt2img(self):
         if self.txt2img is None:
@@ -119,13 +145,13 @@ class CharacterGenerator:
         if controlnet_config:
             record = controlnet_config.get("record")
             if record is None:
-                logger.warning("ControlNet configuration missing record; falling back to base pipeline.")
+                self._record_warning("ControlNet configuration missing record; falling back to base pipeline.")
             else:
                 control_source = getattr(record, "source", None)
                 try:
                     control_model = ControlNetModel.from_pretrained(control_source, torch_dtype=self.dtype)
                 except Exception as exc:
-                    logger.warning("Failed to load ControlNet '%s': %s", record.name, exc)
+                    self._record_warning(f"Failed to load ControlNet '{record.name}': {exc}")
                     control_model = None
                 if control_model is not None:
                     if use_img2img:
@@ -166,7 +192,7 @@ class CharacterGenerator:
                 load_kwargs["weight_name"] = record.weight_name
             pipe.load_ip_adapter(source, **load_kwargs)
         except Exception as exc:
-            logger.warning("Failed to load IP-Adapter '%s': %s", getattr(record, "name", "unknown"), exc)
+            self._record_warning(f"Failed to load IP-Adapter '{getattr(record, "name", "unknown")}': {exc}")
             return {}
 
         scale = config.get("scale")
@@ -174,7 +200,7 @@ class CharacterGenerator:
             try:
                 pipe.set_ip_adapter_scale(float(scale))
             except Exception as exc:
-                logger.warning("Unable to set IP-Adapter scale: %s", exc)
+                self._record_warning(f"Unable to set IP-Adapter scale: {exc}")
         image = config.get("image")
         if image is not None:
             kwargs["ip_adapter_image"] = image
@@ -382,3 +408,5 @@ class CharacterGenerator:
         result.save(path)
         logger.info("Inpaint complete | path=%s", path)
         return path
+
+
