@@ -32,16 +32,3 @@ def test_summarise_install_failure_defaults_to_last_line():
     message = wan_install._summarise_install_failure(output)  # noqa: SLF001 - testing helper
 
     assert message == "ERROR: could not determine version"
-
-
-def test_summarise_install_failure_handles_name_mismatch():
-    output = (
-        "Requested wan from git+https://github.com/Wan-Video/Wan2.2.git#egg=wan22 has "
-        "inconsistent name: expected 'wan22', but metadata has 'wan'"
-    )
-
-    message = wan_install._summarise_install_failure(output)  # noqa: SLF001 - testing helper
-
-    assert "metadata" in message.lower()
-    assert "wan" in message
-    assert "wan22" in message

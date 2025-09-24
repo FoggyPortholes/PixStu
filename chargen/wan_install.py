@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib
 import subprocess
 import sys
-import re
 from typing import Iterable, Tuple
 
 WAN_MODULE = "wan22"
@@ -58,23 +57,7 @@ def _summarise_install_failure(output: str) -> str:
                 "trust store or proxy configuration."
             )
 
-        if "inconsistent name" in lower and "metadata has" in lower:
-            expected_match = re.search(r"expected '([^']+)'", line)
-            actual_match = re.search(r"metadata has '([^']+)'", line)
-            if expected_match and actual_match:
-                expected_name = expected_match.group(1)
-                actual_name = actual_match.group(1)
-                return (
-                    "Repository metadata reports package name "
-                    f"'{actual_name}' instead of '{expected_name}'. "
-                    "Install using the reported name or update the specification."
-                )
-            return (
-                "Package name reported by repository metadata does not match the "
-                "requested Wan2.2 name. Install using the metadata name or update "
-                "the specification."
-            )
-
+<
     return lines[-1]
 
 
