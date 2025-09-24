@@ -70,17 +70,14 @@ def generator_env(monkeypatch, tmp_path):
         float32="float32",
         manual_seed=lambda seed: seed,
         cuda=SimpleNamespace(is_available=lambda: False),
+        backends=SimpleNamespace(mps=SimpleNamespace(is_available=lambda: False)),
     )
 
-<<<<<<< Updated upstream
     monkeypatch.setattr(model_setup, "OUTPUTS", str(outputs_dir))
     monkeypatch.setattr(model_setup, "MODELS", str(models_dir))
     monkeypatch.setattr(model_setup, "LORAS", str(lora_dir))
     monkeypatch.setattr(model_setup, "ROOT", str(tmp_path))
     monkeypatch.setattr(generator, "model_setup", model_setup)
-=======
-    monkeypatch.setattr(generator, "OUTPUTS", str(outputs_dir))
->>>>>>> Stashed changes
     monkeypatch.setattr(generator, "torch", torch_stub)
 
     txt2img_cls = _make_dummy_pipeline("Txt2Img")
@@ -144,6 +141,7 @@ def test_generate_writes_image_and_applies_lora(generator_env, tmp_path):
     assert call_inputs["prompt"] == "mystic swordsman"
     assert call_inputs["generator"] == 7
     assert call_inputs["height"] == 128 and call_inputs["width"] == 128
+    assert gen.consume_warnings() == []
 
 
 def test_refine_uses_img2img_pipeline(generator_env, tmp_path):
@@ -173,3 +171,4 @@ def test_refine_uses_img2img_pipeline(generator_env, tmp_path):
     assert call_inputs["num_inference_steps"] == 12
     assert call_inputs["guidance_scale"] == 4.5
     assert call_inputs["image"].size == (192, 192)
+    assert gen.consume_warnings() == []

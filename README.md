@@ -4,8 +4,8 @@ PixStu focuses on generating consistent, reusable character art using Stable Dif
 
 ## Applications
 
-- `app/pixel_char_studio.py`: Character Studio for prompt-driven character generation, LoRA presets, reference guidance, and metadata logging. The built-in LoRA library lets you preview adapters and pull new ones from Hugging Face with a click.
-- `app/sprite_sheet_studio.py`: Sprite Sheet Studio for packaging an existing sprite into mapped, multi-frame sheets.
+- `chargen/studio.py`: CharGen Studio for prompt-driven character generation, LoRA presets, reference guidance, and metadata logging. The built-in LoRA library lets you preview adapters and pull new ones from Hugging Face with a click.
+- `chargen/sprites/studio.py`: Sprite Sheet Studio for packaging an existing sprite into mapped, multi-frame sheets.
 
 ## Getting Started
 
@@ -14,8 +14,7 @@ pip install -r requirements.txt
 python -m chargen.studio
 ```
 
-<<<<<<< Updated upstream
-To install the optimal PyTorch build for your accelerator (CUDA, ROCm, Apple M‑series MPS), run:
+To install the optimal PyTorch build for your accelerator (CUDA, ROCm, Apple M-series MPS), run:
 
 ```bash
 python -m chargen.setup_all --install-torch
@@ -23,7 +22,7 @@ python -m chargen.setup_all --install-torch
 
 By default the helper detects your hardware. Override with `--device cuda|rocm|mps|cpu` if needed. Apple Silicon users should export `PYTORCH_ENABLE_MPS_FALLBACK=1` to gracefully fall back on CPU for missing kernels.
 
-Each generation writes a metadata JSON beside the output. Use the in-app rating control to assign a 1–5 score; ratings are saved into the metadata. Aggregate quality across presets with:
+Each generation writes a metadata JSON beside the output. Use the in-app rating control to assign a 1-5 score; ratings are saved into the metadata. Aggregate quality across presets with:
 
 ```bash
 python tools/aggregate_ratings.py
@@ -48,8 +47,6 @@ scripts\install_windows.ps1   # Windows PowerShell
 
 Each script provisions `.venv`, installs dependencies, and selects the recommended PyTorch build for the platform.
 
-The Character Studio exposes prompt input, preset selection, seed controls, reference uploads, and a built-in gallery sourced from `reference_gallery/`. Outputs (PNG, sprite sheets, metadata) are saved under `outputs/` at runtime.
-=======
 The Character Studio exposes prompt input, preset selection, seed controls, reference uploads, a LoRA preview/download panel, and a gallery sourced from `reference_gallery/`. Outputs (PNG, sprite sheets, metadata) are saved under `outputs/` at runtime.
 
 ### Starter Presets
@@ -57,14 +54,14 @@ The Character Studio exposes prompt input, preset selection, seed controls, refe
 PixStu ships with ready-to-use style presets so you can explore quickly:
 
 - `SDXL Character Base` – neutral baseline for prompt-driven experimentation.
-- `SDXL Detail Offset` – adds Stability AI's official sharpening LoRA.
-- `SDXL Pixel Character` – crisp sprite aesthetics.
+- `SDXL Illustrated Hero` – bold hero look leveraging Stability AI's offset LoRA.
+- `SDXL Detail Offset` – crisp cel shading inspired by retro anime lighting.
+- `SDXL Pixel Character` – sprite-friendly palette and line treatment.
 - `SDXL Anime Companion` – stylised manga/anime characters.
 - `Heroic Comics (Marvel)` – bold Marvel-inspired comic style.
 - `Legendary Comics (DC)` – high-contrast heroic comic look.
 - `JRPG Hero (Final Fantasy)` – cinematic JRPG fantasy styling.
 - `Animated Feature Style` – modern animated-movie charm.
->>>>>>> Stashed changes
 
 Sprite sheet packaging can be launched separately:
 
@@ -83,11 +80,7 @@ Reference assets can be added to `reference_gallery/` so they appear in the Char
 ## Testing
 
 ```bash
-<<<<<<< Updated upstream
-pytest
+python -m pytest
 python tools/check_migration.py
 python tools/aggregate_ratings.py
-=======
-python -m pytest
->>>>>>> Stashed changes
 ```

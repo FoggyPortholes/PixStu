@@ -1,4 +1,4 @@
-﻿{
+{
   "presets": [
     {
       "name": "SDXL Character Base",
@@ -7,41 +7,34 @@
       "style_prompt": "studio-lit character render, sharp line art, balanced colors",
       "negative_prompt": "lowres, blurry, watermark, text, cropped, extra limbs, worst quality",
       "loras": [],
-<<<<<<< Updated upstream
       "suggested": { "steps": 30, "guidance": 7.0 }
     },
     {
-      "name": "SDXL-Illustrated-Hero",
+      "name": "SDXL Illustrated Hero",
+      "description": "Bold comic-inspired hero styling tuned for splash art.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
       "style_prompt": "dramatic comic book illustration, bold inks, cinematic lighting",
       "negative_prompt": "washed out colors, messy anatomy, text, watermark, low contrast",
       "loras": [
         {
-          "name": "Pixel Art Character XL",
-          "path": "lora/pixel-art-xl.safetensors",
-          "weight": 0.75
+          "name": "SDXL Offset Example",
+          "path": "stabilityai/stable-diffusion-xl-base-1.0/sd_xl_offset_example-lora_1.0.safetensors",
+          "weight": 0.85
         }
       ],
-=======
->>>>>>> Stashed changes
       "suggested": { "steps": 28, "guidance": 6.5 }
     },
     {
       "name": "SDXL Detail Offset",
-      "description": "Adds the official SDXL offset LoRA for crisp features and lighting.",
+      "description": "Adds the Shaded Retro Anime LoRA for crisp cel shading and highlights.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
       "style_prompt": "vibrant anime key art, clean cel shading, expressive pose",
       "negative_prompt": "low detail, dull colors, watermark, signature, double face",
       "loras": [
         {
-<<<<<<< Updated upstream
           "name": "Shaded Retro Anime SDXL",
           "path": "lora/Shaded-Retro-Anime-000006.safetensors",
           "weight": 0.65
-=======
-          "name": "SDXL Offset Example",
-          "path": "stabilityai/stable-diffusion-xl-base-1.0/sd_xl_offset_example-lora_1.0.safetensors",
-          "weight": 0.85
         }
       ],
       "suggested": { "steps": 30, "guidance": 7.0 }
@@ -50,6 +43,8 @@
       "name": "SDXL Pixel Character",
       "description": "Pixel-art tuned LoRA for clean sprite-style characters.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "vibrant pixel art, clean outlines, limited palette",
+      "negative_prompt": "smudged pixels, photorealistic lighting, gradients, noisy background",
       "loras": [
         {
           "name": "Pixel Art Character XL",
@@ -63,12 +58,13 @@
       "name": "SDXL Anime Companion",
       "description": "Anime companion styling LoRA for consistent manga/anime characters.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "studio anime illustration, expressive pose, strong rim light",
+      "negative_prompt": "messy lineart, low contrast, watermark, extra limbs",
       "loras": [
         {
           "name": "Anime Companion SDXL",
           "path": "lora/anime-companion.safetensors",
           "weight": 0.7
->>>>>>> Stashed changes
         }
       ],
       "suggested": { "steps": 24, "guidance": 6.0 }
@@ -77,14 +73,10 @@
       "name": "Heroic Comics (Marvel)",
       "description": "Punchy color palettes and dramatic shading inspired by Marvel comics.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
-      "style_prompt": "detailed mecha render, crisp plating, dramatic rim light",
-      "negative_prompt": "rubber surfaces, blurred joints, watermark, disjointed limbs",
+      "style_prompt": "heroic action pose, cinematic rim light, dynamic cape",
+      "negative_prompt": "muddy inks, flat lighting, watermark, misaligned anatomy",
       "loras": [
         {
-<<<<<<< Updated upstream
-          "name": "Mini Mecha SDXL",
-          "path": "lora/mini-mecha-sdxl-lora.safetensors",
-=======
           "name": "Marvel Comics SDXL",
           "path": "lora/marvel-sdxl/pytorch_lora_weights.bin",
           "weight": 0.9
@@ -96,11 +88,12 @@
       "name": "Legendary Comics (DC)",
       "description": "Strong silhouettes and high-contrast inks for a DC-inspired look.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "iconic superhero portrait, bold chiaroscuro, moody skyline",
+      "negative_prompt": "washed colors, cartoon blur, watermark, off-model face",
       "loras": [
         {
           "name": "Comic Legends SDXL",
           "path": "lora/comic-legends/pytorch_lora_weights.safetensors",
->>>>>>> Stashed changes
           "weight": 0.8
         }
       ],
@@ -110,6 +103,8 @@
       "name": "JRPG Hero (Final Fantasy)",
       "description": "High-fantasy costuming and painterly lighting reminiscent of JRPG cinematics.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "ornate jrpg hero portrait, painterly lighting, floating particles",
+      "negative_prompt": "flat colors, unfinished sketch, watermark, distorted anatomy",
       "loras": [
         {
           "name": "Final Fantasy Hero SDXL",
@@ -123,6 +118,8 @@
       "name": "Animated Feature Style",
       "description": "Soft shading and expressive animation-friendly forms inspired by modern animated movies.",
       "base_model": "stabilityai/stable-diffusion-xl-base-1.0",
+      "style_prompt": "cinematic animation still, volumetric lighting, expressive eyes",
+      "negative_prompt": "overly realistic textures, noise, watermark, extra characters",
       "loras": [
         {
           "name": "Animated Feature SDXL",

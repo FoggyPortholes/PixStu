@@ -24,34 +24,45 @@ class Presets:
             entry["local_path"] = record.local_path
             entry["exists"] = record.exists
             entry.setdefault("name", record.name)
-            if record.repo_id:
-                entry.setdefault("repo_id", record.repo_id)
-            if record.preview_url:
-                entry.setdefault("preview_url", record.preview_url)
-        else:
-            if path_hint:
-                abs_path = path_hint if os.path.isabs(path_hint) else os.path.join(model_setup.MODELS, path_hint)
-                entry["local_path"] = abs_path
-                entry["exists"] = os.path.exists(abs_path)
+            repo_id = getattr(record, "repo_id", None)
+            preview_url = getattr(record, "preview_url", None)
+            if repo_id:
+                entry.setdefault("repo_id", repo_id)
+            if preview_url:
+                entry.setdefault("preview_url", preview_url)
+        elif path_hint:
+            abs_path = path_hint if os.path.isabs(path_hint) else os.path.join(model_setup.MODELS, path_hint)
+            entry["local_path"] = abs_path
+            entry["exists"] = os.path.exists(abs_path)
         entry.setdefault("weight", 1.0)
         return entry
 
-    def _load(self):
+    def _load(self) -> None:
         try:
             with open(self.path, "r", encoding="utf-8-sig") as handle:
                 data = json.load(handle)
-            raw_presets = data.get("presets", [])
         except Exception as exc:
             print(f"[WARNING] Unable to load presets: {exc}")
-            raw_presets = []
+            raw_presets: List[Dict] = []
+        else:
+            if not isinstance(data, dict):
+                print("[WARNING] Presets file root is not a JSON object.")
+                raw_presets = []
+            else:
+                raw_presets = data.get("presets", [])  # type: ignore[assignment]
+                if not isinstance(raw_presets, list):
+                    print("[WARNING] Presets file does not contain a list under 'presets'.")
+                    raw_presets = []
         self.presets = []
         for preset in raw_presets:
-            preset = dict(preset)
-            loras = [self._normalize_lora(entry) for entry in preset.get("loras", [])]
-            preset["loras"] = loras
+            preset = dict(preset or {})
+            lora_entries = preset.get("loras") or []
+            if not isinstance(lora_entries, list):
+                lora_entries = []
+            preset["loras"] = [self._normalize_lora(entry) for entry in lora_entries]
             self.presets.append(preset)
 
-    def refresh(self):
+    def refresh(self) -> None:
         self._load()
 
     def names(self) -> List[str]:
@@ -64,11 +75,11 @@ class Presets:
         preset = self.get(name)
         if not preset:
             return "Select a preset to view details."
-        lines = []
+        lines: List[str] = []
         base = preset.get("base_model", "Unknown base model")
         lines.append(f"**Base model:** `{base}`")
         suggested = preset.get("suggested", {})
-        if suggested:
+        if isinstance(suggested, dict) and suggested:
             lines.append(
                 "**Suggested:** steps={steps}, guidance={guidance}".format(
                     steps=suggested.get("steps", "?"), guidance=suggested.get("guidance", "?")
@@ -76,7 +87,7 @@ class Presets:
             )
         desc = preset.get("description")
         if desc:
-            lines.append(desc)
+            lines.append(str(desc))
         loras = preset.get("loras", [])
         if loras:
             lines.append("**LoRAs:**")
