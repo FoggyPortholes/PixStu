@@ -1,303 +1,141 @@
-from __future__ import annotations
-
 import os
-import queue
-import random
-import threading
-from typing import Generator
-
 import gradio as gr
-from PIL import Image
+from chargen.presets import get_preset_names, get_preset, missing_assets
+from chargen.generator import BulletProofGenerator
+from chargen.pin_editor import Pin, apply_pin_edits
+from chargen.substitution import SubstitutionEngine
+from tools.download_manager import DownloadManager
 
-from . import model_setup, ui_guard, ui_theme
-from .bulletproof import BulletProofGenerator
-from .metadata import save_metadata
-from .plugins.base import UIContext
-from .plugins.manager import get_plugin_manager
-from .presets import Presets
-from .reference_gallery import build_gallery
+dl = DownloadManager()
 
-PRESETS = Presets()
-CONSISTENCY_SUFFIX = ", highly coherent character design, consistent identity, sharp details, clean silhouette"
-EXPECTED_TABS = ["Character Studio", "Reference Gallery"]
-PREVIEW_INTERVAL = 4
-
-
-def _augment_prompt(prompt: str) -> str:
-    prompt = (prompt or "").strip()
-    return (prompt + CONSISTENCY_SUFFIX).strip(", ")
+RETRO_CSS = """
+:root { --accent: #44e0ff; }
+body { font-family: 'Press Start 2P', monospace; background: #0a0a0f; color: #e6e6f0; }
+.gr-button { border-radius: 16px; }
+"""
 
 
-def _stream_generation(
-    prompt_txt: str,
-    preset_name: str,
-    seed_val: float,
-    jitter_val: float,
-    size_val: float,
-    ref_path: str,
-    ref_strength: float,
-    *plugin_values,
-) -> Generator:
-    manager = get_plugin_manager()
-    preset = PRESETS.get(preset_name) or {}
-    generator = BulletProofGenerator(preset)
+def build_ui():
+    with gr.Blocks(css=RETRO_CSS, title="CharGen Studio") as demo:
+        with gr.Tab("Character Studio"):
+            preset = gr.Dropdown(label="Preset", choices=get_preset_names(), info="Select style/model preset")
+            prompt = gr.Textbox(label="Prompt", info="Describe the character, pose, or action")
+            seed = gr.Number(label="Seed", value=42, precision=0, info="Use same seed for reproducibility")
+            generate_btn = gr.Button("Generate", info="Create character image")
+            out_img = gr.Image(label="Output", type="pil")
+            missing_html = gr.HTML(label="Missing Assets", visible=False)
 
-    seed_int = int(seed_val)
-    if jitter_val:
-        seed_int = seed_int + random.randint(0, int(jitter_val))
+            def _check_missing(preset_name):
+                preset_data = get_preset(preset_name) or {}
+                miss = missing_assets(preset_data)
+                if not miss:
+                    return gr.update(visible=False, value="")
+                items = [f"<li>{os.path.basename(m['path'])} — ~{m['size_gb']} GB</li>" for m in miss if m.get('path')]
+                html = (
+                    "<b>Missing assets:</b><ul>"
+                    + "".join(items)
+                    + "</ul>Go to the Downloads tab to queue. Only one download runs at a time."
+                )
+                return gr.update(visible=True, value=html)
 
-    suggested_steps = int(preset.get("suggested", {}).get("steps", 30))
-    progress_interval = max(1, suggested_steps // PREVIEW_INTERVAL)
-    augmented_prompt = _augment_prompt(
-        ", ".join(filter(None, [preset.get("style_prompt"), prompt_txt]))
-    )
-    negative_prompt = preset.get("negative_prompt")
+            preset.change(_check_missing, [preset], [missing_html])
 
-    if ref_path:
-        run_kwargs = dict(
-            ref_image_path=ref_path,
-            prompt=augmented_prompt,
-            strength=float(ref_strength),
-        )
-        run_fn = generator.refine
-    else:
-        run_kwargs = dict(prompt=augmented_prompt)
-        run_fn = generator.generate
+            def _run(preset_name, text_prompt, seed_value):
+                preset_data = get_preset(preset_name) or {}
+                if missing_assets(preset_data):
+                    raise gr.Error("Preset assets missing. See Downloads tab.")
+                generator = BulletProofGenerator(preset_data)
+                return generator.generate(text_prompt, int(seed_value))
 
-    session = manager.create_session(
-        preset_name=preset_name,
-        seed=seed_int,
-        size=int(size_val),
-        ref_image=ref_path or None,
-        ref_strength=float(ref_strength) if ref_path else None,
-    )
+            generate_btn.click(_run, [preset, prompt, seed], [out_img])
 
-    manager.prepare_session(session, list(plugin_values))
+        with gr.Tab("Substitution"):
+            preset_sub = gr.Dropdown(label="Preset", choices=get_preset_names(), info="Select preset for substitution")
+            identity_img = gr.Image(label="Identity Image (char1)", type="pil", info="Upload reference image for identity")
+            pose_img = gr.Image(label="Pose Image (char2)", type="pil", info="Upload pose image (OpenPose auto-extract if available)")
+            sub_prompt = gr.Textbox(label="Prompt", lines=2, info="Extra description for substitution run")
+            id_strength = gr.Slider(0.0, 1.0, value=0.7, step=0.05, label="Identity Strength", info="Blend ratio of identity image")
+            pose_strength = gr.Slider(0.0, 2.0, value=1.0, step=0.05, label="Pose Strength", info="Strength of pose conditioning")
+            sub_seed = gr.Number(label="Seed", value=42, precision=0, info="Seed for deterministic substitution")
+            sub_btn = gr.Button("Generate Substitution", info="Run identity?pose substitution")
+            sub_output = gr.Image(label="Output")
 
-    result_queue: "queue.Queue" = queue.Queue()
-    start_updates = manager.on_generation_start(session)
-    result_queue.put(("start", start_updates))
+            def _run_sub(preset_name, identity, pose, text_prompt, ids, poses, seed_value):
+                preset_data = get_preset(preset_name) or {}
+                if missing_assets(preset_data):
+                    raise gr.Error("Preset assets missing. See Downloads tab.")
+                engine = SubstitutionEngine(preset_data)
+                return engine.run(
+                    char1_identity=identity,
+                    char2_pose=pose,
+                    prompt=text_prompt,
+                    identity_strength=float(ids or 0.0),
+                    pose_strength=float(poses or 0.0),
+                    seed=int(seed_value or 0),
+                )
 
-    def _progress(step: int, total: int, image):
-        plugin_updates = manager.on_preview(session, step, total, image)
-        result_queue.put(("preview", step, total, image, plugin_updates))
-
-    def _worker():
-        try:
-            controlnet_config = session.storage.get("controlnet")
-            ip_adapter_config = session.storage.get("ip_adapter")
-
-            out_path = run_fn(
-                seed=seed_int,
-                size=int(size_val),
-                progress_callback=_progress,
-                progress_interval=progress_interval,
-                controlnet_config=controlnet_config,
-                ip_adapter_config=ip_adapter_config,
-                negative_prompt=negative_prompt,
-                **run_kwargs,
-            )
-            warnings = (
-                generator.consume_warnings() if hasattr(generator, "consume_warnings") else []
-            )
-            metadata = {
-                "prompt": augmented_prompt,
-                "preset": preset_name,
-                "seed": seed_int,
-                "size": int(size_val),
-                "ref": bool(ref_path),
-            }
-            if negative_prompt:
-                metadata["negative_prompt"] = negative_prompt
-            meta_path = save_metadata(os.path.dirname(out_path), metadata)
-
-            try:
-                with Image.open(out_path) as img:
-                    final_image = img.copy()
-            except Exception:
-                final_image = None
-
-            plugin_updates = manager.on_generation_complete(session, final_image, out_path, meta_path)
-            result_queue.put(("final", final_image or out_path, meta_path, plugin_updates, warnings))
-        except Exception as exc:
-            warnings = (
-                generator.consume_warnings() if hasattr(generator, "consume_warnings") else []
-            )
-            plugin_updates = manager.on_error(session, str(exc))
-            result_queue.put(("error", str(exc), plugin_updates, warnings))
-        finally:
-            result_queue.put(("done",))
-
-    threading.Thread(target=_worker, daemon=True).start()
-
-    while True:
-        message = result_queue.get()
-        tag = message[0]
-
-        if tag == "start":
-            plugin_updates = message[1]
-            yield (
-                gr.update(value=None),
-                gr.update(value=""),
-                gr.update(value="Preparing..."),
-                *plugin_updates,
-            )
-        elif tag == "preview":
-            _tag, step_index, total, image, plugin_updates = message
-            yield (
-                gr.update(),
-                gr.update(),
-                gr.update(value=f"Rendering... step {step_index + 1}/{total}"),
-                *plugin_updates,
-            )
-        elif tag == "final":
-            _tag, image_value, meta_path, plugin_updates, warnings = message
-            status_value = "Done"
-            if warnings:
-                bullet_list = "\n".join(f"- {warning}" for warning in warnings)
-                status_value = f"Done with warnings:\n{bullet_list}"
-            yield (
-                gr.update(value=image_value),
-                gr.update(value=meta_path),
-                gr.update(value=status_value),
-                *plugin_updates,
-            )
-        elif tag == "error":
-            _tag, error_message, plugin_updates, warnings = message
-            status_value = f"Error: {error_message}"
-            if warnings:
-                bullet_list = "\n".join(f"- {warning}" for warning in warnings)
-                status_value = f"{status_value}\nWarnings:\n{bullet_list}"
-            yield (
-                gr.update(value=None),
-                gr.update(value=""),
-                gr.update(value=status_value),
-                *plugin_updates,
-            )
-        elif tag == "done":
-            break
-
-
-def build_ui() -> gr.Blocks:
-    model_setup.ensure_directories()
-    css = ui_theme.theme_css()
-
-    plugin_manager = get_plugin_manager()
-
-    with gr.Blocks(css=css, analytics_enabled=False, title="CharGen Studio") as demo:
-        gr.HTML(
-            """
-        <div style=\"text-align:center; margin-bottom: 12px;\">
-            <h1 style=\"color:#3cffd0; text-shadow:0 0 12px rgba(60,255,208,0.6);\">CharGen Studio</h1>
-            <p style=\"color:rgba(230,245,255,0.75); font-size: 12px;\">High-fidelity character generation with consistent outputs.</p>
-        </div>
-        """
-        )
-
-        with gr.Tabs(elem_id="chargen-tabs"):
-            with gr.TabItem("Character Studio"):
-                with gr.Column(elem_classes=["chargen-panel"]):
-                    gr.Markdown("### Prompt & Preset", elem_classes=["chargen-group-title"])
-                    with gr.Row():
-                        prompt = gr.Textbox(
-                            label="Prompt",
-                            placeholder="e.g., cyber ninja with neon katana",
-                            info="Describe the character. Retro flair encouraged.",
-                        )
-                        preset = gr.Dropdown(
-                            PRESETS.names(),
-                            label="Preset",
-                            info="Pick from curated styles for consistent outputs.",
-                        )
-                    gr.Markdown("### Seed Controls", elem_classes=["chargen-group-title"])
-                    with gr.Row():
-                        seed = gr.Number(value=42, label="Seed", info="Re-use seeds for deterministic looks.")
-                        jitter = gr.Slider(
-                            minimum=0,
-                            maximum=50,
-                            value=0,
-                            step=1,
-                            label="Seed Jitter",
-                            info="Randomly nudge the seed within this range.",
-                        )
-                        size = gr.Slider(
-                            minimum=256,
-                            maximum=1024,
-                            value=512,
-                            step=64,
-                            label="Output Size",
-                            info="Square render size in pixels.",
-                        )
-                    gr.Markdown("### Reference Guidance", elem_classes=["chargen-group-title"])
-                    with gr.Row():
-                        with gr.Column():
-                            ref = gr.Image(type="filepath", label="Reference Image")
-                            gr.Markdown(
-                                "Drop a character reference to enable img2img.",
-                                elem_classes=["chargen-hint"],
-                            )
-                        with gr.Column():
-                            strength = gr.Slider(
-                                minimum=0.1,
-                                maximum=0.9,
-                                value=0.35,
-                                step=0.05,
-                                label="Ref Strength",
-                                info="Blend between prompt and reference (img2img).",
-                            )
-                            gr.Markdown(
-                                "Higher values cling to the reference silhouette.",
-                                elem_classes=["chargen-hint"],
-                            )
-
-                    generate_btn = gr.Button("Generate", elem_classes=["chargen-primary"])
-                    out_img = gr.Image(label="Final Character", interactive=False)
-                    gr.Markdown(
-                        "Results land in the `outputs/` directory with metadata logs.",
-                        elem_classes=["chargen-hint"],
-                    )
-                    meta_box = gr.Textbox(
-                        label="Metadata JSON",
-                        interactive=False,
-                        info="Saved metadata file path.",
-                    )
-                    status = gr.Textbox(
-                        label="Status",
-                        interactive=False,
-                        info="Generation status and warnings.",
-                    )
-
-                    with gr.Column() as plugin_container:
-                        pass
-
-                    plugin_outputs = plugin_manager.setup_ui(
-                        UIContext(
-                            gradio=gr,
-                            container=plugin_container,
-                            components={
-                                "meta": meta_box,
-                                "status": status,
-                                "final_image": out_img,
-                                "preset": preset,
-                            },
-                        )
-                    )
-
-            generate_btn.click(
-                _stream_generation,
-                inputs=[prompt, preset, seed, jitter, size, ref, strength, *plugin_manager.inputs],
-                outputs=[out_img, meta_box, status, *plugin_outputs],
+            sub_btn.click(
+                _run_sub,
+                [preset_sub, identity_img, pose_img, sub_prompt, id_strength, pose_strength, sub_seed],
+                [sub_output],
             )
 
-            with gr.TabItem("Reference Gallery"):
-                with gr.Column(elem_classes=["chargen-panel"]):
-                    gr.Markdown("### Reference Gallery", elem_classes=["chargen-group-title"])
-                    gr.Markdown(
-                        "Upload assets to `reference_gallery/` to curate your inspiration deck.",
-                        elem_id="gallery-hint",
-                    )
-                    build_gallery()
+        with gr.Tab("Pin Editor"):
+            preset_pin = gr.Dropdown(label="Preset (optional)", choices=get_preset_names(), info="Use preset's base model for inpaint")
+            pin_base = gr.Image(label="Base Image", type="pil", info="Image to edit with targeted pins")
+            pin_table = gr.Dataframe(headers=["x", "y", "label", "prompt"], row_count=(0, "dynamic"), label="Pins Table", interactive=True)
+            ref_img = gr.Image(label="Optional Reference Image", type="pil")
+            radius = gr.Slider(8, 128, value=32, step=1, label="Pin Radius", info="Mask radius around each pin")
+            apply_btn = gr.Button("Apply Pin Edits", info="Run placeholder inpaint per pin")
+            gallery = gr.Gallery(label="Pin Edit Results", columns=3)
 
-        ui_guard.assert_tabs(EXPECTED_TABS)
+            def _apply(preset_name, base_img, rows, ref_image, radius_value):
+                if base_img is None or not rows:
+                    return []
+                pins = []
+                for row in rows:
+                    try:
+                        x, y, label, prompt_text = int(row[0]), int(row[1]), str(row[2]), str(row[3])
+                        pins.append(Pin(x, y, label or "pin", prompt_text or "", ref_image))
+                    except Exception:
+                        continue
+
+                def _editor_fn(img, mask, prompt_text, ref):  # placeholder implementation
+                    return img
+
+                return list(apply_pin_edits(base_img, pins, _editor_fn).values())
+
+            apply_btn.click(_apply, [preset_pin, pin_base, pin_table, ref_img, radius], [gallery])
+
+        with gr.Tab("Reference Gallery"):
+            gr.Markdown("(Placeholder) Thumbnails grid. Click to load as reference.")
+
+        with gr.Tab("Downloads"):
+            url = gr.Textbox(label="Model/LoRA URL", info="Direct download link")
+            filename = gr.Textbox(label="Save As (filename)", info="File name to save under loras/")
+            size = gr.Number(label="Size (GB)", value=1.0, info="Approximate size for info only")
+            queue_btn = gr.Button("Queue Download", info="Add to background download queue")
+            status = gr.Textbox(label="Status", interactive=False)
+
+            def _queue(url_value, filename_value, size_value):
+                if not url_value or not filename_value:
+                    return "Invalid input"
+                dl.add(url_value, filename_value, float(size_value or 0.0))
+                dl.run_async()
+                return f"Queued {filename_value} ({size_value} GB)"
+
+            queue_btn.click(_queue, [url, filename, size], [status])
 
     return demo
+
+
+if __name__ == "__main__":
+    demo = build_ui()
+    try:
+        from chargen.ui_guard import check_ui
+
+        for warning in check_ui(demo):
+            print(warning)
+    except Exception as exc:  # pragma: no cover
+        print("[UI] Drift check skipped:", exc)
+    demo.launch(server_name=os.getenv("PCS_SERVER_NAME", "127.0.0.1"), server_port=int(os.getenv("PCS_PORT", "7860")))

@@ -1,86 +1,72 @@
-ï»¿# PixStu
+# PixStu
 
-PixStu focuses on generating consistent, reusable character art using Stable Diffusion XL pipelines with curated presets and optional reference conditioning.
+PixStu focuses on generating consistent, reusable character art across multiple styles (comic, anime, pixel, realism). The studio ships with curated presets, optional substitution/pin editing tools, and a retro-modern 16-bit UI.
 
-## Applications
-
-- `chargen/studio.py`: CharGen Studio for prompt-driven character generation, LoRA presets, reference guidance, and metadata logging. The built-in LoRA library lets you preview adapters and pull new ones from Hugging Face with a click.
-- `chargen/sprites/studio.py`: Sprite Sheet Studio for packaging an existing sprite into mapped, multi-frame sheets.
-
-## Getting Started
+## Quick Start
 
 ```bash
-pip install -r requirements.txt
+pip install -r requirements-linux.txt  # or requirements.txt on Windows/macOS
 python -m chargen.studio
 ```
 
-To install the optimal PyTorch build for your accelerator (CUDA, ROCm, Apple M-series MPS), run:
+Environment variables:
+- `PCS_PORT` / `GRADIO_SERVER_PORT` – choose listening port (default 7860)
+- `PCS_SERVER_NAME` – bind host (default `127.0.0.1`)
+- `PCS_OPEN_BROWSER` – set to `1` to auto-open the UI in a browser
+
+## Presets
+
+Curated preset definitions live in `configs/curated_models.json`. Each entry specifies the base model, LoRAs, positive/negative terms, step count, CFG scale, and default resolution. Missing LoRA assets surface in the UI and can be queued via the Downloads tab.
+
+Run the preset smoke test (generates sample outputs under `docs/preset_samples/`):
 
 ```bash
-python -m chargen.setup_all --install-torch
+python tools/test_presets.py
 ```
 
-By default the helper detects your hardware. Override with `--device cuda|rocm|mps|cpu` if needed. Apple Silicon users should export `PYTORCH_ENABLE_MPS_FALLBACK=1` to gracefully fall back on CPU for missing kernels.
+## Tabs Overview
 
-Each generation writes a metadata JSON beside the output. Use the in-app rating control to assign a 1-5 score; ratings are saved into the metadata. Aggregate quality across presets with:
+- **Character Studio** – core text-to-image generation wrapped in `BulletProofGenerator`
+- **Substitution** – identity & pose blending scaffold (OpenPose optional)
+- **Pin Editor** – targeted masks per “pin” for future inpainting integrations
+- **Reference Gallery** – placeholder for curated reference thumbnails
+- **Downloads** – single-queue downloader for LoRAs/models
+
+## Tooling
+
+- `tools/download_manager.py` – serial downloader
+- `tools/verify_repo.py` – structure guard (run before commits)
+- `tools/sanitize_reports.py` – strips PII from QA outputs
+- `tools/check_migration.py` – ensures legacy `app/` layout is retired
+- `tools/aggregate_ratings.py` – aggregates ratings stored in metadata JSON files
+
+A GitHub workflow (`.github/workflows/preset_qa.yml`) executes preset smoke tests plus sanitation on pull requests touching presets or tooling.
+
+## Repository Verification
+
+Before opening a PR:
 
 ```bash
-python tools/aggregate_ratings.py
-```
-
-Need ControlNet guidance or IP-Adapter styling? Open the accordions in the Character Studio tab, enable the module, select a model, and upload the required conditioning/reference image before hitting **Generate**. CharGen will fetch the weights automatically (cached under `models/controlnet/` and `models/ip_adapter/`).
-
-For touch-ups after generation, expand **AI Edit (Experimental)**, drop in the output image (and optional mask), provide an edit prompt, and let the inpainting pipeline refine just the region you select.
-
-Need to troubleshoot a render? Toggle **Show Diagnostics** in the Character Studio tab to reveal the live log tail and the absolute path to `logs/chargen.log`.
-
-Prefer a guided install? Use the platform scripts:
-
-```bash
-./scripts/install_macos.sh    # macOS
-./scripts/install_linux.sh    # Linux
-```
-
-```powershell
-scripts\install_windows.ps1   # Windows PowerShell
-```
-
-Each script provisions `.venv`, installs dependencies, and selects the recommended PyTorch build for the platform.
-
-The Character Studio exposes prompt input, preset selection, seed controls, reference uploads, a LoRA preview/download panel, and a gallery sourced from `reference_gallery/`. Outputs (PNG, sprite sheets, metadata) are saved under `outputs/` at runtime.
-
-### Starter Presets
-
-PixStu ships with ready-to-use style presets so you can explore quickly:
-
-- `SDXL Character Base` â€“ neutral baseline for prompt-driven experimentation.
-- `SDXL Illustrated Hero` â€“ bold hero look leveraging Stability AI's offset LoRA.
-- `SDXL Detail Offset` â€“ crisp cel shading inspired by retro anime lighting.
-- `SDXL Pixel Character` â€“ sprite-friendly palette and line treatment.
-- `SDXL Anime Companion` â€“ stylised manga/anime characters.
-- `Heroic Comics (Marvel)` â€“ bold Marvel-inspired comic style.
-- `Legendary Comics (DC)` â€“ high-contrast heroic comic look.
-- `JRPG Hero (Final Fantasy)` â€“ cinematic JRPG fantasy styling.
-- `Animated Feature Style` â€“ modern animated-movie charm.
-
-Sprite sheet packaging can be launched separately:
-
-```bash
-python run_sprite_sheet_studio.py
-```
-
-## Configuration
-
-Curated presets live in `configs/curated_models.json`. Each entry can define a base SDXL model, optional LoRAs, and recommended inference parameters. Drop additional LoRAs or presets into `models/` and `configs/` respectively to extend the library.
-
-LoRA metadata and download links are stored in `configs/lora_catalog.json`. Entries reference Hugging Face repositories, preview images, and local storage paths under `models/lora/`.
-
-Reference assets can be added to `reference_gallery/` so they appear in the Character Studio gallery for quick conditioning.
-
-## Testing
-
-```bash
-python -m pytest
+python tools/verify_repo.py
 python tools/check_migration.py
-python tools/aggregate_ratings.py
 ```
+
+Optional QA:
+
+```bash
+python tools/aggregate_ratings.py  # summarise ratings from outputs/
+```
+
+## Directories
+
+- `loras/` – place downloaded LoRA checkpoints here (ignored by git)
+- `outputs/` – generated images + metadata (ignored by git)
+- `docs/preset_samples/` – preset QA output (captured in CI artifacts)
+
+## Contributing
+
+- Respect the immutable design intent: single-character composition, uncluttered background, retro-modern UI styling.
+- Keep presets bullet-proof: enforce negative prompts, surface missing assets, prefer reproducible seeds.
+- Run the verification scripts and CI workflows locally when possible.
+
+Enjoy building with PixStu!

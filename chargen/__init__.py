@@ -1,4 +1,4 @@
-"""CharGen Studio core package."""
+﻿"""CharGen Studio core package."""
 
 from .studio import build_app
 

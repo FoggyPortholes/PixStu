@@ -1,13 +1,20 @@
 import os
 
 ROOT = os.path.dirname(os.path.dirname(__file__))
+SKIP_DIRS = {".venv", "__pycache__"}
+SELF_PATH = os.path.abspath(__file__)
+
 issues: list[str] = []
 
-for root, _, files in os.walk(ROOT):
+for root, dirs, files in os.walk(ROOT):
+    if any(skip in os.path.relpath(root, ROOT).split(os.sep) for skip in SKIP_DIRS):
+        continue
     for file in files:
         if not file.endswith(".py"):
             continue
         path = os.path.join(root, file)
+        if os.path.abspath(path) == SELF_PATH:
+            continue
         try:
             text = open(path, encoding="utf-8").read()
         except Exception:

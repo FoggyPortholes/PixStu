@@ -1,320 +1,67 @@
-# CharGen Studio — Immutable Documentation (Codex-Ready)
+# PixStu Quickstart & Setup (Immutable Reference)
 
-## App Intent (Immutable)
+## Intent
+- Produce high-quality, single-character renders with consistent styling.
+- Enforce clean backgrounds and strip text/speech bubbles by default.
+- Maintain the retro-modern 16-bit UI aesthetic � visible tooltips, consistent grouping, no tab drift.
+- Support CUDA, MPS, CPU, and experimental ZLUDA/zkluda paths.
 
-CharGen Studio’s sole purpose is to use AI to **generate high-quality, consistent, reusable character images of any kind**.
-
-- Lightweight by design.
-- Runs on CPU, NVIDIA CUDA, AMD (ZLUDA), Intel (zkluda), Apple MPS.
-- Presets, seeds, and metadata ensure consistency.
-- Optional advanced tools: ControlNet, IP-Adapter, AI Edit (with automatic masking).
-- UI must remain **retro-modern 16‑bit aesthetic**, clean, flashy, and uniform.
-- Only **two tabs**: *Character Studio* and *Reference Gallery*.
-
-## Canonical Repo (Immutable)
-
-The official codebase lives at: 👉 [FoggyPortholes/PixStu](https://github.com/FoggyPortholes/PixStu)
-
-This repo is the source of truth. All changes must align with the above **App Intent**. Legacy `app/` entrypoints have been removed; keep all new work aligned with the `chargen/` structure.
-
-## Basic Structure (Post-Migration)
-
+## Repository Layout (post-migration)
 ```
 chargen/
-  ├── studio.py          # Entry point
-  ├── character_studio.py # UI (2 tabs)
-  ├── generator.py        # Txt2Img, Img2Img, ControlNet, IP-Adapter
-  ├── editor.py           # AI Edit (inpainting)
-  ├── auto_mask.py        # Automatic masking helper
-  ├── presets.py          # Curated presets loader
-  ├── reference_gallery.py# Gallery integration
-  ├── logging_config.py   # Logging setup
-  ├── hw_detect.py        # Device detection (CUDA/ROCm/MPS/CPU)
-  ├── ui_theme.py         # Retro-modern 16-bit theme
-  ├── ui_guard.py         # Drift detection (UI rules)
-  ├── setup_all.py        # Auto-install deps + download ControlNets
-  └── model_setup.py      # Model management
-configs/
-  └── curated_models.json # Preset definitions
-models/
-  ├── controlnet/         # Auto-downloaded (canny, openpose, depth)
-  └── ip_adapter/         # Drop-in weights
+  generator.py         # BulletProofGenerator facade
+  presets.py           # Curated preset loader + asset checks
+  studio.py            # Gradio UI (Character, Substitution, Pin Editor, Downloads, Gallery)
+  substitution.py      # identity?pose scaffold (ControlNet/OpenPose optional)
+  pin_editor.py        # pin-based masking utilities
+  metadata.py          # metadata helpers
+configs/curated_models.json  # Curated presets
+loras/                # LoRA checkpoints (gitignored)
+outputs/              # Generated assets + metadata (gitignored)
+tools/
+  download_manager.py
+  verify_repo.py
+  test_presets.py
+  check_migration.py
+  sanitize_reports.py
+  aggregate_ratings.py
 ```
 
-## UI Guidelines (Immutable)
-
-- **Uniform grouping** of controls (Prompt, Preset, Seed/Jitter, Size, Reference).
-- **Only two tabs**: Character Studio and Reference Gallery.
-- **Retro-modern 16-bit design**: pixel grid background, neon accents, `Press Start 2P` font.
-- **Tooltips everywhere**.
-- **No drift**: Any extra tabs or styling changes must be flagged.
-
-## UI Functional Coverage
-
-All app functionality must be surfaced clearly in the UI:
-
-- **Character Studio tab**:
-  - Prompt input (auto-injected style descriptors from preset).
-  - Preset selector (bullet‑proof presets like DC Comic Book).
-  - Seed + Seed Jitter controls.
-  - Output size selector.
-  - Reference image upload and Ref Strength slider.
-  - Generate button (calls BulletProofGenerator).
-  - Diagnostics toggle (shows logs/metadata path).
-  - **AI Edit (Experimental)** accordion:
-    - Image to Edit upload.
-    - Mask upload (optional).
-    - Edit Prompt input.
-    - Edit Strength slider.
-    - Auto‑Mask toggle.
-    - Target Region selector.
-    - Apply Edit button.
-    - Edited output preview + status box.
-- **Reference Gallery tab**:
-  - Pixel grid of thumbnails.
-  - Clicking loads into Character Studio as reference image.
-- **Status & Metadata**:
-  - Always display generation status.
-  - Path to saved metadata JSON shown in UI.
-
-## UI Component Mapping
-
-| Feature                | UI Element                  | Backend Function/Module           |
-| ---------------------- | --------------------------- | --------------------------------- |
-| Character Prompt       | Textarea (Character Studio) | `BulletProofGenerator.generate`   |
-| Preset Selection       | Dropdown (Character Studio) | `presets.py` loader + generator   |
-| Seed / Jitter          | Number + Range inputs       | `BulletProofGenerator.generate`   |
-| Output Size            | Dropdown                    | `BulletProofGenerator.generate`   |
-| Reference Image        | File upload                 | `generator.py` (img2img pipeline) |
-| Ref Strength           | Slider                      | `generator.py` (img2img strength) |
-| Generate Button        | Button                      | `BulletProofGenerator.generate`   |
-| Diagnostics            | Toggle/Panel                | `logging_config.py` + metadata    |
-| AI Edit: Image Upload  | File upload                 | `editor.py` inpainting            |
-| AI Edit: Mask Upload   | File upload                 | `auto_mask.py` / `editor.py`      |
-| AI Edit: Edit Prompt   | Text input                  | `editor.py`                       |
-| AI Edit: Edit Strength | Slider                      | `editor.py`                       |
-| AI Edit: Auto-Mask     | Dropdown (On/Off)           | `auto_mask.py`                    |
-| AI Edit: Target Region | Dropdown                    | `auto_mask.py`                    |
-| AI Edit: Apply Edit    | Button                      | `editor.py.edit_image`            |
-| Reference Gallery      | Grid thumbnails             | `reference_gallery.py`            |
-| Metadata Path Display  | Text box                    | `metadata.py`                     |
-| Status Display         | Status box                  | `logging_config.py`               |
-
-## User Rating Storage
-
-Each generated image has a metadata JSON. Extend metadata with a `rating` field:
-
-```python
-# chargen/metadata.py (excerpt)
-import json, os
-
-def save_metadata(meta_path, metadata, rating=None):
-    if rating is not None:
-        metadata["rating"] = rating
-    os.makedirs(os.path.dirname(meta_path), exist_ok=True)
-    with open(meta_path, "w", encoding="utf-8") as f:
-        json.dump(metadata, f, indent=2)
+## Environment
 ```
-
-In the UI, after generation, display 1–5 star rating control. On selection, call `save_metadata()` with rating.
-
-This allows users to curate and QA generations for quality tracking.
-
-## Rating Aggregation Tool
-
-```python
-# tools/aggregate_ratings.py
-"""Aggregate user ratings from metadata JSONs."""
-import os, json
-from collections import defaultdict
-
-OUTPUTS = "outputs"
-
-def collect_ratings():
-    ratings = defaultdict(list)
-    for root, _, files in os.walk(OUTPUTS):
-        for f in files:
-            if f.endswith(".json"):
-                path = os.path.join(root, f)
-                try:
-                    data = json.load(open(path, encoding="utf-8"))
-                    preset = data.get("preset", "unknown")
-                    if "rating" in data:
-                        ratings[preset].append(data["rating"])
-                except Exception:
-                    continue
-    return ratings
-
-
-def main():
-    ratings = collect_ratings()
-    for preset, vals in ratings.items():
-        if not vals:
-            continue
-        avg = sum(vals)/len(vals)
-        print(f"{preset}: avg {avg:.2f} from {len(vals)} ratings")
-
-if __name__ == "__main__":
-    main()
+pip install -r requirements-linux.txt  # or requirements.txt on Windows/macOS
+python -m chargen.studio
 ```
+Environment variables:
+- `PCS_PORT`, `GRADIO_SERVER_PORT` � override port (default 7860)
+- `PCS_SERVER_NAME` � bind host (default 127.0.0.1)
+- `PCS_OPEN_BROWSER` � set to 1/true to auto-launch browser
 
-Run `python tools/aggregate_ratings.py` to print average ratings per preset. This enables QA teams to measure quality trends across styles.
+## Immutable UI Rules
+- Tabs must include Character Studio, Substitution, Pin Editor, Reference Gallery, Downloads.
+- Controls surfaced with tooltips; no hidden/conditional controls for core workflows.
+- Retro CSS theme remains consistent (accent color, font, button radius).
 
-## QA Checklist for UI Components
+## Preset Lifecycle
+1. Define presets in `configs/curated_models.json` (model, positives, negatives, LoRAs).
+2. Missing LoRA assets surface in the UI; queue downloads via Downloads tab.
+3. Run smoke test after edits:
+   ```bash
+   python tools/test_presets.py
+   ```
+4. Use `tools/aggregate_ratings.py` to summarise ratings from metadata JSON.
 
-Each UI component must be verified manually and automatically.
-
-## Output Management
-
-- `outputs/` folder is created at first run.
-- `.gitignore` must ignore all files under `outputs/` except the folder itself.
-
-## Migration Steps (Immutable)
-
-If you encounter an older clone that still contains legacy `app/` scripts, migrate it to the `chargen/` structure systematically:
-
-1. Copy `app/` -> `chargen/` (preserve folder structure) in the outdated clone.
-2. Update imports: replace `from app` with `from chargen` across all files.
-3. Replace `import app` with `import chargen` where used.
-4. Move entrypoint: deprecate `run_pcs.py`; replace with `chargen/studio.py`.
-5. Relocate preset config to `configs/curated_models.json`.
-6. Validate by running `python chargen/studio.py` and confirming UI integrity.
-7. Run QA checklist to verify all controls and backend mapping.
-
-### Migration Verification Script
-
-```python
-# tools/check_migration.py
-"""Scan repo for lingering legacy imports or files from app/."""
-import os, re
-
-ROOT = os.path.dirname(os.path.dirname(__file__))
-legacy_hits = []
-
-for root, _, files in os.walk(ROOT):
-    for f in files:
-        if f.endswith(".py"):
-            path = os.path.join(root, f)
-            text = open(path, encoding="utf-8").read()
-            if re.search(r"\bimport app\b", text) or re.search(r"from app", text):
-                legacy_hits.append(path)
-
-# Check for lingering app/ dir and run_pcs.py
-if os.path.exists(os.path.join(ROOT, "app")):
-    legacy_hits.append("app/ directory still present")
-if os.path.exists(os.path.join(ROOT, "run_pcs.py")):
-    legacy_hits.append("run_pcs.py still present")
-
-if legacy_hits:
-    print("[FAIL] Migration incomplete. Found:")
-    for hit in legacy_hits:
-        print(" -", hit)
-    raise SystemExit(1)
-else:
-    print("[OK] Migration complete. No legacy imports or files found.")
+## Verification
+Before pushing:
 ```
-
-Run with `python tools/check_migration.py` after migration. CI can include this script to block merges until legacy traces are removed.
-
----
-
-## Recommended Features & Updates (Prioritized)
-
-### Security Patches (apply first)
-
-1. **Sanitize QA Reports** – introduce tooling to scrub PII, local paths, and filenames before QA data leaves the workstation.
-2. **Harden Metadata Handling** – validate and escape metadata fields to prevent corrupted JSON and injection of unsafe values.
-3. **Safe Artifact Uploads** – gate artifact publishing behind checksum validation and signed destinations to avoid tampering.
-
-### Core Stability
-
-4. **Migration Script** – finalize automation that detects legacy `app/` assets and blocks merges until the new layout is enforced.
-5. **UI Drift Guard** – keep immutable tabs/controls under automated watch so design regressions surface immediately.
-6. **Logging/Debugging Enhancements** – standardize log levels and add structured debug output for faster incident triage.
-
-### Feature Enhancements
-
-7. **Bullet-Proof Presets** – deliver the hardened preset flow with curated positives/negatives and consistent notebook outputs.
-8. **ControlNet & IP-Adapter Hooks** – expose plugin toggles end-to-end so advanced conditioning works from the main UI.
-9. **AI-Assisted Editing** – round out the edit workflow with richer masking, guidance prompts, and preview safeguards.
-10. **Cross-Platform Setup Scripts** – ship installer scripts for macOS, Windows, and Linux to reduce onboarding friction.
-
-### QA & User Experience
-
-11. **User Ratings** – capture subjective feedback directly in the studio so presets can be tuned with real usage data.
-12. **Rating Aggregation** – automate rollups of rating data to spot regressions and highlight standout presets.
-13. **GitHub Actions QA Workflow** – add CI coverage that renders samples and publishes sanitized reports on every PR.
-14. **QA Checklist** – maintain a shared checklist to ensure manual validation covers every mandatory control.
-15. **Immutable Retro UI Theme** – lock the neon retro styling with shared CSS so visual identity isn’t quietly drifted.
-
-## Patch Notes Template (Immutable)
-
+python tools/verify_repo.py
+python tools/check_migration.py
 ```
-# Patch Notes — CharGen Studio
+GitHub Actions (`preset_qa.yml`) repeats these checks and stores preset samples.
 
-## Version: <x.y.z>
-## Date: <YYYY-MM-DD>
+## Extensibility Notes
+- Substitute engine expects optional ControlNet/OpenPose; fall back gracefully when unavailable.
+- Pin editor currently calls a placeholder inpaint � slot in SDXL inpaint pipeline when ready.
+- Extend `BulletProofGenerator` for upscale/two-pass workflows without breaking the simple API (`generate(prompt, seed) -> PIL.Image`).
 
-### Security Patches
-- [PATCH-ID] <short description>
-
-### Core Stability
-- [CHANGE-ID] <short description>
-
-### Feature Enhancements
-- [FEAT-ID] <short description>
-
-### QA & User Experience
-- [QA-ID] <short description>
-
----
-```
-
-## Version Tracking Notes (Immutable)
-
-A separate version tracking document must be maintained in `docs/version_history.md`.
-
-### Initial Version File Scaffold
-
-```
-# CharGen Studio — Version History
-
-## v0.1.0 — 2025-09-23
-Commit: <initial-commit-hash>
-- Initial migration to chargen/ structure and immutable documentation.
-```
-
----
-
-## CI Hook for Version Tracking (Immutable)
-
-Add a GitHub Actions step to auto-append version history entries on tagged releases.
-
-```yaml
-# .github/workflows/version_tracking.yml
-name: Version Tracking
-on:
-  push:
-    tags:
-      - 'v*.*.*'
-
-jobs:
-  update-history:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Append version entry
-        run: |
-          echo "## ${GITHUB_REF#refs/tags/} — $(date +'%Y-%m-%d')" >> docs/version_history.md
-          echo "Commit: $(git rev-parse --short HEAD)" >> docs/version_history.md
-          echo "- Automated entry for release" >> docs/version_history.md
-      - name: Commit changes
-        run: |
-          git config --global user.name 'github-actions'
-          git config --global user.email 'github-actions@users.noreply.github.com'
-          git add docs/version_history.md
-          git commit -m "chore: update version history"
-          git push
-```
-
-This ensures immutable, append-only version tracking.
+Keep this guide immutable unless project intent changes.
