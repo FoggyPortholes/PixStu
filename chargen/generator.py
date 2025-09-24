@@ -1,4 +1,8 @@
+import contextlib
+import io
 import logging
+import os
+import warnings
 
 import torch
 from PIL import Image
@@ -31,6 +35,34 @@ def _detect_device() -> str:
     return "cpu"
 
 
+def _enable_xformers_if_safe(pipe: object) -> None:
+    """Attempt to enable xFormers attention while silencing noisy warnings."""
+
+    disable_flag = os.environ.get("PCS_ENABLE_XFORMERS", "").strip().lower()
+    if disable_flag in {"0", "false", "no", "off"}:
+        return
+    if disable_flag == "" and not torch.cuda.is_available():
+        # Default to skipping on non-CUDA setups unless explicitly requested.
+        return
+    if not hasattr(pipe, "enable_xformers_memory_efficient_attention"):
+        return
+
+    # Silence the extremely loud stderr/stdout noise emitted by incompatible
+    # xFormers builds. We still surface actionable failures through logging.
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*xFormers can't load C\+\+/CUDA extensions.*",
+            category=UserWarning,
+        )
+        buffer = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buffer), contextlib.redirect_stderr(buffer):
+                pipe.enable_xformers_memory_efficient_attention()
+        except Exception as exc:  # pragma: no cover - optional acceleration
+            logger.warning("CUDA speed opts not applied: %s", exc)
+
+
 class BulletProofGenerator:
     """Minimal generator facade that enforces positives/negatives and device fallbacks."""
 
@@ -57,9 +89,8 @@ class BulletProofGenerator:
 
         # Speed options
         if self.device == "cuda":
+            _enable_xformers_if_safe(self.pipe)
             try:
-                if hasattr(self.pipe, "enable_xformers_memory_efficient_attention"):
-                    self.pipe.enable_xformers_memory_efficient_attention()
                 if hasattr(torch, "compile") and hasattr(self.pipe, "unet"):
                     self.pipe.unet = torch.compile(self.pipe.unet, mode="reduce-overhead", fullgraph=True)
             except Exception as exc:  # pragma: no cover
