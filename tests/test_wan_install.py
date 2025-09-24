@@ -64,3 +64,25 @@ def test_summarise_install_failure_handles_xformers_prompt():
 
     assert "xformers" in message.lower()
     assert "reinstall" in message.lower()
+
+
+def test_summarise_install_failure_handles_git_clone_without_details():
+    output = """
+    Running command git clone --filter=blob:none --quiet https://github.com/Wan-Video/Wan2.2.git 'C:/Temp/wan22'
+    error: subprocess-exited-with-error
+    """
+
+    message = wan_install._summarise_install_failure(output)  # noqa: SLF001 - testing helper
+
+    assert "git" in message.lower()
+    assert "clone" in message.lower()
+    assert "verbose" in message.lower()
+
+
+def test_summarise_install_failure_handles_debug_code_placeholder():
+    output = "installed failed. debug code"
+
+    message = wan_install._summarise_install_failure(output)  # noqa: SLF001 - testing helper
+
+    assert "debug code" in message.lower()
+    assert "verbose" in message.lower()

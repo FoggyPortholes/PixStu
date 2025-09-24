@@ -30,7 +30,23 @@ def _summarise_install_failure(output: str) -> str:
 
     lowered = [line.lower() for line in lines]
 
+    saw_git_clone_command = False
+    saw_subprocess_error = False
+    debug_placeholder_line: str | None = None
+
     for line, lower in zip(lines, lowered):
+        if "running command git clone" in lower:
+            saw_git_clone_command = True
+            continue
+
+        if "debug code" in lower:
+            debug_placeholder_line = line
+            continue
+
+        if "subprocess-exited-with-error" in lower:
+            saw_subprocess_error = True
+            continue
+
         if "fatal: unable to access" in lower:
             if "403" in lower or "forbidden" in lower:
                 return (
@@ -97,6 +113,29 @@ def _summarise_install_failure(output: str) -> str:
                 "requested Wan2.2 name. Install using the metadata name or update "
                 "the specification."
             )
+
+    if debug_placeholder_line is not None:
+        return (
+            "pip aborted the Wan2.2 install after printing a 'debug code' placeholder. "
+            "Rerun the install with --verbose to reveal the underlying Git error."
+        )
+
+    if saw_git_clone_command:
+        message = (
+            "pip invoked Git to clone Wan2.2 but the command exited before emitting a "
+            "specific error. "
+        )
+        if saw_subprocess_error:
+            message += "Check earlier pip output or rerun with --verbose to inspect the Git failure."
+        else:
+            message += "Inspect the preceding pip output for Git errors or retry with --verbose logging."
+        return message
+
+    if saw_subprocess_error:
+        return (
+            "pip reported a subprocess failure while installing Wan2.2. Rerun the install "
+            "with --verbose for the detailed error log."
+        )
 
     return lines[-1]
 
