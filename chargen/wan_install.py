@@ -57,7 +57,6 @@ def _summarise_install_failure(output: str) -> str:
                 "trust store or proxy configuration."
             )
 
-<
     return lines[-1]
 
 
