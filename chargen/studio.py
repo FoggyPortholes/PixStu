@@ -157,14 +157,12 @@ def build_ui() -> gr.Blocks:
                 info="Select preset for substitution",
             )
             identity_img = gr.Image(
-                label="Identity Image (char1)",
+                label="Identity Image (char1) — upload reference",
                 type="pil",
-                info="Upload reference image for identity",
             )
             pose_img = gr.Image(
-                label="Pose Image (char2)",
+                label="Pose Image (char2) — optional pose source",
                 type="pil",
-                info="Upload pose image (OpenPose auto-extract if available)",
             )
             sub_prompt = gr.Textbox(
                 label="Prompt",
@@ -193,9 +191,7 @@ def build_ui() -> gr.Blocks:
                 precision=0,
                 info="Seed for deterministic substitution",
             )
-            sub_btn = gr.Button(
-                "Generate Substitution", info="Run identity→pose substitution"
-            )
+            sub_btn = gr.Button("Generate Substitution (identity→pose)")
             sub_output = gr.Image(label="Output")
 
             def _run_sub(
@@ -243,9 +239,8 @@ def build_ui() -> gr.Blocks:
                 info="Use preset's base model for inpaint",
             )
             pin_base = gr.Image(
-                label="Base Image",
+                label="Base Image — edit with targeted pins",
                 type="pil",
-                info="Image to edit with targeted pins",
             )
             pin_table = gr.Dataframe(
                 headers=["x", "y", "label", "prompt"],
@@ -262,9 +257,7 @@ def build_ui() -> gr.Blocks:
                 label="Pin Radius",
                 info="Mask radius around each pin",
             )
-            apply_btn = gr.Button(
-                "Apply Pin Edits", info="Run placeholder inpaint per pin"
-            )
+            apply_btn = gr.Button("Apply Pin Edits (placeholder inpaint)")
             gallery = gr.Gallery(label="Pin Edit Results", columns=3)
 
             def _apply(preset_name, base_img, rows, ref_image, radius_value):

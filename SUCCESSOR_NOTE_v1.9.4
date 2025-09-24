@@ -4,6 +4,11 @@
 - Multi-LoRA blending UI ✅
 - Persistent Cache v2 ✅
 - Gallery cleanup & integration tests ✅
+- LoRA Downloads helper & auto-fetch option ✅
+- Retro 16-bit UI polish ✅
+- Self-healing cache + CLI ✅
+- Global self-heal decorators ✅
+- UI smoke & self-heal CI ✅
 
 ## Lessons Learned
 - Persisting user-specific data under `.pixstu/` keeps the repo clean while
@@ -13,8 +18,12 @@
   with the key generation.
 - Integration coverage that stubs heavy pipelines is a good compromise between
   execution time and regression protection.
+- Self-heal hooks should stay small and composable so we can extend them when
+  new error classes surface in telemetry.
 
 ## Self-Note
 Remember to revisit the LoRA blend UI once we have feedback from artists; they
 may want presets scoped per character type. Also verify that cache eviction
-remains tuned once real assets are exercised on slower disks.
+remains tuned once real assets are exercised on slower disks. Monitor the
+self-heal log to catch any recurring missing asset reports and expand the
+KNOWN_LORAS registry when feasible.
