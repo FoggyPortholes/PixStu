@@ -83,3 +83,4 @@ loras/*
 outputs/*
 !outputs/.gitkeep
 
+chargen.zip
