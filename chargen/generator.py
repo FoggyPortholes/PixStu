@@ -2,17 +2,51 @@ import contextlib
 import io
 import logging
 import os
+from functools import lru_cache
 import warnings
+
+logger = logging.getLogger(__name__)
+
+_NOISY_XFORMERS_MESSAGES = (
+    "xFormers can't load C++/CUDA extensions",
+    "Memory-efficient attention, SwiGLU, sparse and more won't be available.",
+)
+
+
+class _SilenceXformersWarnings(logging.Filter):
+    """Filter out noisy xFormers warnings about optional CUDA features."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # pragma: no cover - log side-effect
+        message = record.getMessage()
+        return not any(noise in message for noise in _NOISY_XFORMERS_MESSAGES)
+
+
+@lru_cache(maxsize=None)
+def _install_xformers_noise_filter() -> None:
+    """Mute noisy xFormers logs when CUDA acceleration is unavailable."""
+
+    filter_ = _SilenceXformersWarnings()
+    for name in (
+        "xformers",
+        "xformers.ops",
+        "xformers.components",
+        "diffusers.utils.import_utils",
+    ):
+        logging.getLogger(name).addFilter(filter_)
+
 
 import torch
 from PIL import Image
+
+
+if not torch.cuda.is_available():  # pragma: no cover - depends on hardware
+    _install_xformers_noise_filter()
+
 
 try:
     from diffusers import StableDiffusionXLPipeline, StableDiffusionXLControlNetPipeline
 except Exception:  # pragma: no cover - optional dependency fallback
     StableDiffusionXLPipeline = StableDiffusionXLControlNetPipeline = None  # type: ignore
-
-logger = logging.getLogger(__name__)
 
 
 def _detect_device() -> str:
@@ -69,6 +103,8 @@ class BulletProofGenerator:
     def __init__(self, preset: dict):
         self.preset = preset or {}
         self.device = _detect_device()
+        if self.device != "cuda":
+            _install_xformers_noise_filter()
         model_id = self.preset.get("model", "stabilityai/stable-diffusion-xl-base-1.0")
         dtype = getattr(torch, "float16", None) if self.device == "cuda" else getattr(torch, "float32", None)
         pipeline_cls = StableDiffusionXLPipeline
