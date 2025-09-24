@@ -78,3 +78,8 @@ loras/*
 !loras/.gitkeep
 outputs/*
 !outputs/.gitkeep
+loras/*
+!loras/.gitkeep
+outputs/*
+!outputs/.gitkeep
+

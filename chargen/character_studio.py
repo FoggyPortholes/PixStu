@@ -154,10 +154,8 @@ def _stream_generation(
             _tag, image_value, meta_path, plugin_updates, warnings = message
             status_value = "Done"
             if warnings:
-                bullet_list = "
-".join(f"- {warning}" for warning in warnings)
-                status_value = f"Done with warnings:
-{bullet_list}"
+                bullet_list = "\n".join(f"- {warning}" for warning in warnings)
+                status_value = f"Done with warnings:\n{bullet_list}"
             yield (
                 gr.update(value=image_value),
                 gr.update(value=meta_path),
@@ -168,11 +166,8 @@ def _stream_generation(
             _tag, error_message, plugin_updates, warnings = message
             status_value = f"Error: {error_message}"
             if warnings:
-                bullet_list = "
-".join(f"- {warning}" for warning in warnings)
-                status_value = f"{status_value}
-Warnings:
-{bullet_list}"
+                bullet_list = "\n".join(f"- {warning}" for warning in warnings)
+                status_value = f"{status_value}\nWarnings:\n{bullet_list}"
             yield (
                 gr.update(value=None),
                 gr.update(value=""),
