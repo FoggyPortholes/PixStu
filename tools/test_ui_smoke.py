@@ -1,14 +1,17 @@
-#!/usr/bin/env python3
-"""
-Smoke test for PixStu UI — ensures Studio builds without crashing.
-"""
-from chargen import studio
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from pixstu.app.studio import studio
 
 
 def test_ui():
-    app = studio.studio()
-    assert app is not None
-    print("[SMOKE] Studio UI built successfully")
+    demo = studio()
+    assert demo is not None
+    if hasattr(demo, "close"):
+        demo.close()
+    print("[SMOKE] UI OK")
 
 
 if __name__ == "__main__":
