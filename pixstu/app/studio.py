@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List
 
+codex/rewrite-pixstu-to-version-2.1.0-bq3zn7
 try:  # optional dependency guardrail
     import gradio as gr
 except ModuleNotFoundError as exc:  # pragma: no cover - exercised in minimal envs
@@ -15,6 +16,9 @@ except ModuleNotFoundError as exc:  # pragma: no cover - exercised in minimal en
     _GRADIO_IMPORT_ERROR = exc
 else:
     _GRADIO_IMPORT_ERROR = None
+=======
+import gradio as gr
+main
 
 from ..core.inpaint import inpaint
 from ..tools.device import pick_device
@@ -61,12 +65,15 @@ def _run_inpaint(prompt, init, mask, steps, scale, seed):
 
 
 def studio():
+codex/rewrite-pixstu-to-version-2.1.0-bq3zn7
     if gr is None:  # pragma: no cover - requires missing dependency
         raise RuntimeError(
             "PixStu studio requires the optional dependency 'gradio'. Install it with "
             "`pip install -r requirements.txt` (or `pip install gradio`) before running the UI."
         ) from _GRADIO_IMPORT_ERROR
 
+=======
+main
     with gr.Blocks(css=".retro-btn{font-family:monospace;background:#333;color:#fff;border:2px solid #ff66cc}") as demo:
         gr.Markdown(f"## 🕹️ PixStu v{VERSION} — Device: **{pick_device()}**")
         with gr.Tab("🎨 Inpainting"):
@@ -107,7 +114,11 @@ def studio():
 
 
 if __name__ == "__main__":  # pragma: no cover - manual launch
+codex/rewrite-pixstu-to-version-2.1.0-bq3zn7
     try:
         studio().launch()
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
+=======
+    studio().launch()
+main
