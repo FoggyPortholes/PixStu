@@ -1,14 +1,11 @@
-gradio>=5.47.0
-imageio>=2.34.0
-# torch/torchvision installed below (CPU default)
-
-# P8: dependency pins for stability
-fastapi==0.117.1
-pydantic>=2.10.4,<2.11
-pillow==10.4.0
-diffusers==0.30.2
-transformers==4.44.0
-huggingface_hub==0.35.1
-accelerate==0.34.2
-safetensors==0.4.4
-peft>=0.11.1
+pillow
+gradio>=4.0.0
+huggingface_hub
+# Optional for full GPU pipeline:
+# torch
+# torchvision
+# torchaudio
+# diffusers
+# transformers
+# accelerate
+# xformers
