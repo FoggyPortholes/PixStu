@@ -30,6 +30,15 @@ def studio():
     with gr.Blocks(css=css) as demo:
         gr.Markdown(f"## 🕹️ PixStu v{VERSION} — Device: **{pick_device()}**")
 
+        def safe_call(fn, fallback):
+            def _wrap(*args, **kwargs):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    return fallback(e)
+
+            return _wrap
+
         # Txt2Img
         with gr.Tab("✍️ Txt2Img"):
             t_prompt = gr.Textbox(label="Prompt")
@@ -40,7 +49,12 @@ def studio():
                 img, meta = txt2img(p)
                 _save_output(img, meta)
                 return img, _gallery()
-            t_run.click(_txt2img, inputs=t_prompt, outputs=[t_out, t_gallery])
+
+            def _txt2img_error(e):
+                gr.Warning(f"Error: {e}")
+                return None, _gallery()
+
+            t_run.click(safe_call(_txt2img, _txt2img_error), inputs=t_prompt, outputs=[t_out, t_gallery])
 
         # Img2Img
         with gr.Tab("🖌️ Img2Img"):
@@ -53,7 +67,14 @@ def studio():
                 img, meta = img2img(p, init)
                 _save_output(img, meta)
                 return img, _gallery()
-            i_run.click(_img2img, inputs=[i_prompt, i_init], outputs=[i_out, i_gallery])
+
+            def _img2img_error(e):
+                gr.Warning(f"Error: {e}")
+                return None, _gallery()
+
+            i_run.click(
+                safe_call(_img2img, _img2img_error), inputs=[i_prompt, i_init], outputs=[i_out, i_gallery]
+            )
 
         # Inpainting
         with gr.Tab("🎨 Inpainting"):
@@ -67,7 +88,14 @@ def studio():
                 img, meta = inpaint(pr, ii, mi)
                 _save_output(img, meta)
                 return img, _gallery()
-            p_run.click(_inpaint, inputs=[p_prompt, p_init, p_mask], outputs=[p_out, p_gallery])
+
+            def _inpaint_error(e):
+                gr.Warning(f"Error: {e}")
+                return None, _gallery()
+
+            p_run.click(
+                safe_call(_inpaint, _inpaint_error), inputs=[p_prompt, p_init, p_mask], outputs=[p_out, p_gallery]
+            )
 
         # Txt2GIF
         with gr.Tab("🎞️ Txt2GIF"):
@@ -78,7 +106,12 @@ def studio():
             def _gif(p):
                 img, meta = txt2gif(p)
                 return img, meta.get("gif_b64", "")
-            v_run.click(_gif, inputs=v_prompt, outputs=[v_prev, v_b64])
+
+            def _gif_error(e):
+                gr.Warning(f"Error: {e}")
+                return None, f"Error: {e}"
+
+            v_run.click(safe_call(_gif, _gif_error), inputs=v_prompt, outputs=[v_prev, v_b64])
 
         # Gallery
         with gr.Tab("🖼️ Gallery"):
