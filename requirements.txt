@@ -1,7 +1,9 @@
-pillow
 gradio>=4.0.0
+pillow
+imageio
 huggingface_hub
-# Optional for full GPU pipeline:
+
+# Optional GPU stack:
 # torch
 # torchvision
 # torchaudio
