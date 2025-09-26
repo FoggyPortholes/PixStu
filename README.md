@@ -10,9 +10,9 @@ python -m chargen.studio
 ```
 
 Environment variables:
-- `PCS_PORT` / `GRADIO_SERVER_PORT` ñ choose listening port (default 7860)
-- `PCS_SERVER_NAME` ñ bind host (default `127.0.0.1`)
-- `PCS_OPEN_BROWSER` ñ set to `1` to auto-open the UI in a browser
+- `PCS_PORT` / `GRADIO_SERVER_PORT` ‚Äì choose listening port (default 7860)
+- `PCS_SERVER_NAME` ‚Äì bind host (default `127.0.0.1`)
+- `PCS_OPEN_BROWSER` ‚Äì set to `1` to auto-open the UI in a browser
 
 ## Presets
 
@@ -26,19 +26,19 @@ python tools/test_presets.py
 
 ## Tabs Overview
 
-- **Character Studio** ñ core text-to-image generation wrapped in `BulletProofGenerator`
-- **Substitution** ñ identity & pose blending scaffold (OpenPose optional)
-- **Pin Editor** ñ targeted masks per ìpinî for future inpainting integrations
-- **Reference Gallery** ñ placeholder for curated reference thumbnails
-- **Downloads** ñ single-queue downloader for LoRAs/models
+- **Character Studio** ‚Äì core text-to-image generation wrapped in `BulletProofGenerator`
+- **Substitution** ‚Äì identity & pose blending scaffold (OpenPose optional)
+- **Pin Editor** ‚Äì targeted masks per ‚Äúpin‚Äù for future inpainting integrations
+- **Reference Gallery** ‚Äì placeholder for curated reference thumbnails
+- **Downloads** ‚Äì single-queue downloader for LoRAs/models
 
 ## Tooling
 
-- `tools/download_manager.py` ñ serial downloader
-- `tools/verify_repo.py` ñ structure guard (run before commits)
-- `tools/sanitize_reports.py` ñ strips PII from QA outputs
-- `tools/check_migration.py` ñ ensures legacy `app/` layout is retired
-- `tools/aggregate_ratings.py` ñ aggregates ratings stored in metadata JSON files
+- `tools/download_manager.py` ‚Äì serial downloader
+- `tools/verify_repo.py` ‚Äì structure guard (run before commits)
+- `tools/sanitize_reports.py` ‚Äì strips PII from QA outputs
+- `tools/check_migration.py` ‚Äì ensures legacy `app/` layout is retired
+- `tools/aggregate_ratings.py` ‚Äì aggregates ratings stored in metadata JSON files
 
 A GitHub workflow (`.github/workflows/preset_qa.yml`) executes preset smoke tests plus sanitation on pull requests touching presets or tooling.
 
@@ -59,9 +59,14 @@ python tools/aggregate_ratings.py  # summarise ratings from outputs/
 
 ## Directories
 
-- `loras/` ñ place downloaded LoRA checkpoints here (ignored by git)
-- `outputs/` ñ generated images + metadata (ignored by git)
-- `docs/preset_samples/` ñ preset QA output (captured in CI artifacts)
+
+## üß© Presets & Generator (WAN2.2)
+- Choose a preset, tweak **traits** (role, palette, pose), and see a **live synthesized prompt**.
+- Use **‚ö° Quick Preview** for a fast, low-step render.
+- Save your own presets to `.pixstu/presets.json`; defaults live in `assets/presets/wan22.json`.
+- `loras/` ‚Äì place downloaded LoRA checkpoints here (ignored by git)
+- `outputs/` ‚Äì generated images + metadata (ignored by git)
+- `docs/preset_samples/` ‚Äì preset QA output (captured in CI artifacts)
 
 ## Contributing
 
