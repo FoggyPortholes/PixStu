@@ -4,7 +4,6 @@ Text-to-Image pipeline with graceful fallback.
 from __future__ import annotations
 
 import json
-import random
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -13,6 +12,7 @@ from PIL import Image, ImageDraw
 from ..tools.cache import Cache
 from ..tools.device import pick_device
 from ..tools.guardrails import check_blank_background, check_prompt
+from ..tools.util import set_seed
 from .lora import prepare_lora_kwargs
 
 try:  # optional heavy deps
@@ -21,20 +21,6 @@ try:  # optional heavy deps
 except Exception:  # pragma: no cover - exercised when deps missing
     torch = None  # type: ignore[assignment]
     StableDiffusionXLPipeline = None  # type: ignore[assignment]
-
-
-def _seed(seed: Optional[int]) -> None:
-    if seed is None:
-        return
-    random.seed(seed)
-    try:
-        import numpy as np  # type: ignore
-
-        np.random.seed(seed)
-    except Exception:
-        pass
-    if torch is not None:
-        torch.manual_seed(seed)
 
 
 def _cache_key(**payload: Any) -> str:
@@ -67,7 +53,7 @@ def txt2img(
 ) -> Tuple[Image.Image, Dict[str, Any]]:
     start = time.time()
     check_prompt(prompt)
-    _seed(seed)
+    set_seed(seed)
 
     key = _cache_key(
         prompt=prompt,

@@ -4,7 +4,6 @@ Image-to-Image pipeline (no mask).
 from __future__ import annotations
 
 import json
-import random
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -14,6 +13,7 @@ from PIL import Image, ImageDraw
 from ..tools.cache import Cache
 from ..tools.device import pick_device
 from ..tools.guardrails import check_blank_background, check_prompt
+from ..tools.util import set_seed
 from .lora import prepare_lora_kwargs
 
 try:  # optional heavy deps
@@ -24,20 +24,6 @@ except Exception:  # pragma: no cover - exercised when deps missing
     StableDiffusionXLImg2ImgPipeline = None  # type: ignore[assignment]
 
 ImageLike = Union[str, Path, Image.Image]
-
-
-def _seed(seed: Optional[int]) -> None:
-    if seed is None:
-        return
-    random.seed(seed)
-    try:
-        import numpy as np  # type: ignore
-
-        np.random.seed(seed)
-    except Exception:
-        pass
-    if torch is not None:
-        torch.manual_seed(seed)
 
 
 def _read(image: ImageLike) -> Image.Image:
@@ -81,7 +67,7 @@ def img2img(
     start = time.time()
     check_prompt(prompt)
     init = _read(init_image)
-    _seed(seed)
+    set_seed(seed)
 
     stamp = _image_stamp(init_image)
     key = _cache_key(

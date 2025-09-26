@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import importlib
 import json
-import random
 import time
 from pathlib import Path
 from typing import Iterable, Optional, Tuple
@@ -15,6 +14,7 @@ from PIL import Image, ImageDraw
 from ..tools.cache import Cache
 from ..tools.device import pick_device
 from ..tools.guardrails import check_blank_background, check_prompt
+from ..tools.util import set_seed
 from .lora import prepare_lora_kwargs
 
 _torch = None
@@ -57,21 +57,6 @@ def _read(path: str | Path) -> Image.Image:
     return Image.open(path).convert("RGBA")
 
 
-def _seed(seed: Optional[int]) -> None:
-    if seed is None:
-        return
-    torch = _load_torch()
-    random.seed(seed)
-    try:
-        import numpy as np
-
-        np.random.seed(seed)
-    except Exception:
-        pass
-    if torch is not None:
-        torch.manual_seed(seed)
-
-
 def _cache_key(prompt: str, init_image: str | Path, mask_image: str | Path, **extra) -> str:
     payload = {
         "prompt": prompt,
@@ -103,7 +88,7 @@ def inpaint(
     check_prompt(prompt)
     init = _read(init_image)
     mask = _read(mask_image)
-    _seed(seed)
+    set_seed(seed)
 
     key = _cache_key(
         prompt,

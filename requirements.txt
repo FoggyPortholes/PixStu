@@ -1,13 +1,13 @@
-gradio>=4.0.0
-pillow
-imageio
-huggingface_hub
+gradio==4.44.0
+pillow==10.4.0
+imageio==2.36.0
+huggingface_hub==0.25.1
 
-# Optional GPU stack:
-# torch
-# torchvision
-# torchaudio
-# diffusers
-# transformers
-# accelerate
-# xformers
+# Optional GPU stack (tested versions):
+# torch==2.4.1
+# torchvision==0.19.1
+# torchaudio==2.4.1
+# diffusers==0.30.0
+# transformers==4.44.2
+# accelerate==0.34.2
+# xformers==0.0.28.post2
