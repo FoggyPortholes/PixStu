@@ -3,16 +3,10 @@ Device selector with fallback:
 CUDA (NVIDIA) → ZLUDA (Intel/AMD CUDA shim) → MPS (Apple) → CPU
 """
 import os
-
-try:
-    import torch
-except ModuleNotFoundError:  # pragma: no cover - optional install path
-    torch = None  # type: ignore[assignment]
+import torch
 
 
 def pick_device():
-    if torch is None:
-        return "cpu"
     # 1) Native CUDA
     if torch.cuda.is_available():
         return torch.device("cuda")
