@@ -2,42 +2,32 @@
 Device selector with fallback:
 CUDA (NVIDIA) → ZLUDA (Intel/AMD CUDA shim) → MPS (Apple) → CPU
 """
-from __future__ import annotations
-
 import os
-from typing import Union
 
-try:  # torch is optional for CPU-only installs
+try:
     import torch
-except ModuleNotFoundError:  # pragma: no cover - exercised without torch
+except ModuleNotFoundError:  # pragma: no cover - optional install path
     torch = None  # type: ignore[assignment]
 
 
-def _zluda_hint() -> str:
-    env = (
-        os.environ.get("ZLUDA_PATH", "")
-        + os.environ.get("LD_PRELOAD", "")
-        + os.environ.get("DYLD_INSERT_LIBRARIES", "")
-    )
-    return env.lower()
-
-
-def pick_device() -> Union["torch.device", str]:
+def pick_device():
     if torch is None:
         return "cpu"
-
+    # 1) Native CUDA
     if torch.cuda.is_available():
         return torch.device("cuda")
-
-    if "zluda" in _zluda_hint():
+    # 2) ZLUDA probe via env hints
+    hint = (os.environ.get("ZLUDA_PATH", "")
+            + os.environ.get("LD_PRELOAD", "")
+            + os.environ.get("DYLD_INSERT_LIBRARIES", "")).lower()
+    if "zluda" in hint:
         try:
             if torch.backends.cuda.is_built():
                 return torch.device("cuda")
         except Exception:
             pass
-
-    mps_backend = getattr(torch.backends, "mps", None)
-    if mps_backend and getattr(mps_backend, "is_available", lambda: False)():
+    # 3) Apple MPS
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
         return torch.device("mps")
-
+    # 4) CPU
     return torch.device("cpu")

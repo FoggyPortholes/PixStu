@@ -114,11 +114,11 @@ def inpaint(
         seed=seed,
     )
 
-    with Cache("inpaint", ttl=int(12 * 3600)) as cache:
-        cached = cache.get_image(key)
-        if cached is not None:
-            check_blank_background(cached)
-            return cached, {"device": "cached", "elapsed": 0.0}
+    cache = Cache("inpaint", ttl=int(12 * 3600))
+    cached = cache.get_image(key)
+    if cached is not None:
+        check_blank_background(cached)
+        return cached, {"device": "cached", "elapsed": 0.0}
 
     torch = _load_torch()
     pipeline_cls = _load_pipeline()
@@ -157,7 +157,6 @@ def inpaint(
     image = result.images[0].convert("RGBA")
     check_blank_background(image)
 
-    with Cache("inpaint", ttl=int(12 * 3600)) as cache:
-        cache.put_image(key, image)
+    cache.put_image(key, image)
 
     return image, {"device": str(device), "elapsed": time.time() - start}

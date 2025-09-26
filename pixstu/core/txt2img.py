@@ -81,16 +81,16 @@ def txt2img(
         dtype=dtype,
     )
 
-    with Cache("txt2img", ttl=int(12 * 3600)) as cache:
-        cached = cache.get_image(key)
-        if cached is not None:
-            check_blank_background(cached)
-            return cached, {
-                "prompt": prompt,
-                "device": "cached",
-                "seed": seed,
-                "duration_s": 0.0,
-            }
+    cache = Cache("txt2img", ttl=int(12 * 3600))
+    cached = cache.get_image(key)
+    if cached is not None:
+        check_blank_background(cached)
+        return cached, {
+            "prompt": prompt,
+            "device": "cached",
+            "seed": seed,
+            "duration_s": 0.0,
+        }
 
     if torch is None or StableDiffusionXLPipeline is None:
         image = _fallback(int(width), int(height))
@@ -134,8 +134,7 @@ def txt2img(
     image = result.images[0].convert("RGBA")
     check_blank_background(image)
 
-    with Cache("txt2img", ttl=int(12 * 3600)) as cache:
-        cache.put_image(key, image)
+    cache.put_image(key, image)
 
     return image, {
         "prompt": prompt,
