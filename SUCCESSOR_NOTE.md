@@ -1,23 +1,21 @@
-# PixStu v2.1.0 Successor Note
+# PixStu v2.2.1 — Successor Note
 
-## Immutable Rules
-- Single-character only
-- Blank backgrounds
-- No text/captions/multi-panels
-- Retro-modern UI
-- Fallback: CUDA → ZLUDA → MPS → CPU
+## Pipelines
+- ✍️ Txt2Img · 🖌️ Img2Img · 🎨 Inpainting · 🎞️ Txt2GIF
 
-## Features
-- Guardrails
-- Retro UI
-- Inpainting with Diffusers fallback
-- LoRA scaffold + Downloads
-- Cache with self-heal
-- Self-healing framework
+## Guardrails
+- Single-character only, no text/captions/panels, blank background edges
+
+## Infra
+- Device fallback: CUDA → ZLUDA → MPS → CPU
+- Self-healing: missing assets, dtype retry, sqlite corruption reset, import drift
+- Cache: SQLite, robust, image helpers
+- Downloads: Hugging Face LoRAs → loras/
 
 ## Quickstart
-pip install pillow gradio huggingface_hub
-# Optional GPU stack:
+pip install pillow gradio imageio huggingface_hub
+# Optional full GPU stack:
+# pip uninstall torch torchvision torchaudio -y
 # pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 # pip install diffusers transformers accelerate xformers
 

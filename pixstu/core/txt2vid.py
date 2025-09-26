@@ -36,15 +36,28 @@ def txt2gif(
         images.append(image)
 
     gif_b64 = ""
-    if imageio is not None and len(images) > 1:
-        buffer = io.BytesIO()
-        imageio.mimsave(
-            buffer,
-            [im.convert("RGBA") for im in images],
-            format="GIF",
-            duration=max(1, int(duration_ms)) / 1000.0,
-        )
+    buffer = io.BytesIO()
+    try:
+        if imageio is not None and len(images) > 1:
+            imageio.mimsave(
+                buffer,
+                [im.convert("RGBA") for im in images],
+                format="GIF",
+                duration=max(1, int(duration_ms)) / 1000.0,
+            )
+        else:
+            frames = [im.convert("RGBA") for im in images]
+            frames[0].save(
+                buffer,
+                format="GIF",
+                save_all=len(frames) > 1,
+                append_images=frames[1:],
+                loop=0,
+                duration=max(1, int(duration_ms)),
+            )
         gif_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    except Exception:
+        gif_b64 = ""
 
     return images[0], {
         "prompt": prompt,

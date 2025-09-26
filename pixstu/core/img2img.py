@@ -96,17 +96,18 @@ def img2img(
         init=stamp,
     )
 
+    cache = None
     if stamp is not None:
-        with Cache("img2img", ttl=int(12 * 3600)) as cache:
-            cached = cache.get_image(key)
-            if cached is not None:
-                check_blank_background(cached)
-                return cached, {
-                    "prompt": prompt,
-                    "device": "cached",
-                    "seed": seed,
-                    "duration_s": 0.0,
-                }
+        cache = Cache("img2img", ttl=int(12 * 3600))
+        cached = cache.get_image(key)
+        if cached is not None:
+            check_blank_background(cached)
+            return cached, {
+                "prompt": prompt,
+                "device": "cached",
+                "seed": seed,
+                "duration_s": 0.0,
+            }
 
     if torch is None or StableDiffusionXLImg2ImgPipeline is None:
         image = _fallback(init)
@@ -150,9 +151,8 @@ def img2img(
     image = result.images[0].convert("RGBA")
     check_blank_background(image)
 
-    if stamp is not None:
-        with Cache("img2img", ttl=int(12 * 3600)) as cache:
-            cache.put_image(key, image)
+    if cache is not None:
+        cache.put_image(key, image)
 
     return image, {
         "prompt": prompt,

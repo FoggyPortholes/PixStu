@@ -1,5 +1,5 @@
 """
-PixStu v2.2.0-pre — Pixel Character Studio
+PixStu v2.2.1 — Pixel Character Studio
 """
 from .tools.version import VERSION
 
