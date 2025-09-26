@@ -29,7 +29,7 @@ def check_prompt(prompt: str):
         raise ValueError("Guardrail: single-character only.")
 
 
-def check_blank_background(img: Image.Image, alpha_threshold: int = 5, max_coverage: float = 0.02):
+def check_blank_background(img: Image.Image, alpha_threshold=20, max_coverage=0.20):
     """
     Consider background blank if edge bands are mostly transparent/light.
     We check edge coverage as a fraction of opaque pixels.
