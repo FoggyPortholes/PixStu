@@ -1,0 +1,34 @@
+[
+  {
+    "name": "Western Cartoon Hero",
+    "style": "western_cartoon",
+    "prompt": "pixel art single character heroic stance, clean silhouette, retro palette, 16-bit look, blank background",
+    "negative": "text, caption, watermark, signature, multiple characters, panels, collage",
+    "loras": [{"path": "loras/western_cartoon.safetensors", "weight": 1.0}],
+    "cfg_scale": 7.5,
+    "steps": 28,
+    "width": 640,
+    "height": 640,
+    "traits": {
+      "role": ["hero", "villain", "ranger", "mage"],
+      "palette": ["cga-16", "vaporwave", "earthy"],
+      "pose": ["stance", "running", "jumping"]
+    }
+  },
+  {
+    "name": "Chibi Adventurer",
+    "style": "chibi",
+    "prompt": "chibi pixel character, large head small body, cute, clean silhouette, blank background, 16-bit",
+    "negative": "text, caption, watermark, signature, multiple characters, panels, collage",
+    "loras": [],
+    "cfg_scale": 6.5,
+    "steps": 24,
+    "width": 512,
+    "height": 512,
+    "traits": {
+      "role": ["warrior", "archer", "healer"],
+      "palette": ["pastel", "gameboy", "neon"],
+      "pose": ["wave", "stance", "charge"]
+    }
+  }
+]
